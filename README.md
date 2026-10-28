@@ -1,2 +1,138 @@
 # fuel-guage
-Custom car fuel gauge using a LILYGO T-Display-S3 ESP32-S3 LCD Display
+
+Custom car fuel gauge using a [LILYGO T-Display-S3 ESP32-S3 LCD Display](https://www.amazon.co.uk/dp/B0BRTT727Z)
+
+I have a kit car with a custom fuel tank, mounted at an odd angle and an old Ford instrument cluster. Getting an accurate fuel gauge reading was becoming really hard, so I decided to build a digital one, with a “vintage” look and feel.
+
+I’ve never coded for these devices before, or any similar, so all the coding was done by Grok. If you want to customise the code, I highly recommend uploading `main.cpp` to an AI and just asking for the changes you want. This is pretty much all I did.
+
+The JPG images were converted to header files using [https\://projedefteri.com/tools/image-to-rgb565-converter/](https://projedefteri.com/tools/image-to-rgb565-converter/) 
+
+You will need to tell it the image is 320x170, otherwise it’s default options are correct, e.g. the output needs to be “RGB656 16 bit, hex”.
+
+The two images I used are in the `images/` directory called `light off small.jpg` and `light on small.jpg` and converted into `light_on_small.h` and `light_off_small.h` using that site. If you want to replace the background image, but do not want a warning light, you can either change `main.cpp` to remove that feature, or simply use the same image for both states.
+
+## Your Fuel Gauge
+
+It is highly likely your fuel sender will NOT read the same way as mine.
+
+Below are the critical two lines, about line 73 in `main.cpp`. You will need to use a multimeter to get these resistance readings from your own car. Disconnect the fuel sender from the car and measure it when the tank is empty and full.
+
+You can try just guessing and see if the needle goes to the right place, but obviously measuring is better.
+
+```c
+const float EMPTY_OHMS = 150.0f;
+const float FULL_OHMS  = 29.0f;
+```
+
+Typical ranges you might see:
+
+| Style | Empty | Full | Notes |
+| :---- | :---- | :---- | :---- |
+| Many aftermarket | 0 Ω | 200 Ω | “normal” direction |
+| Many aftermarket | 200 Ω | 0 Ω | reversed (like mine) |
+| Classic Ford/GM | 0–30 Ω | 70–90 Ω | shorter range |
+| Some European | 0 Ω | 180 Ω |  |
+| Others | 240 Ω | 33 Ω | reversed |
+
+A “normal” 0–200 Ω sender (empty \= low resistance) is widespread, but you always have to check the actual empty/full values for the unit being used. Your code only needs those two numbers changed.
+
+The code doesn’t mind if yours goes forward or reverse.
+
+## To Upload the Code
+
+I used an Ubuntu Desktop PC as my development platform, so this works for an Ubuntu PC. For other environments, please ask AI. There are plug-ins for “VS Code”, if you like using that.
+
+The development system is called “PlatformIO”, but if you tell the AI what device you have it will tell you how to get the code working.
+
+If you use a different device from me, you may need to change `platform.ini` and the panel set up at the start of `main.cpp`. 
+
+### Install PlatformIO CLI on Ubuntu
+
+```sh
+sudo apt update
+sudo apt install python3 python3-venv python3-pip
+curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py -o get-platformio.py
+python3 get-platformio.py
+# Add to PATH (or put the lines in ~/.bashrc)
+export PATH="$HOME/.platformio/penv/bin:$PATH"
+# Permanent:
+echo 'export PATH="$HOME/.platformio/penv/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Add your user to dialout so you can upload without sudo
+sudo usermod -a -G dialout $USER
+# Log out and back in, then:
+pio --version
+```
+
+You **will** need to log out & log back in to get the `usermod` command to take effect. This is required for uploading code to the device.
+
+Once you have cloned this repo …
+
+### 1\. Make sure you are in the project folder
+
+```sh
+cd ~/fuel-gauge          # or wherever you created the project
+ls                       # you should see platformio.ini and a src/ folder
+```
+
+### 2\. Build (compile) the project
+
+```sh
+pio run
+```
+
+- First run will download the ESP32 toolchain and libraries (can take a few minutes).  
+- When it finishes successfully you will see something like:
+
+```
+SUCCESS
+RAM:   [          ]   4.8% (used 15744 bytes from 327680 bytes)
+Flash: [==        ]  18.3% (used 240144 bytes from 1310720 bytes)
+```
+
+If you get errors, send them to an AI.
+
+### 3\. Connect the board and find the port
+
+Plug the T-Display-S3 into a USB port on your Ubuntu machine, then:
+
+```sh
+ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
+```
+
+You should see something like `/dev/ttyACM0` or `/dev/ttyUSB0`.  
+(If nothing appears, try a different cable — many cables are charge-only — or check `dmesg | tail` after plugging it in.)
+
+### 4\. Upload the firmware
+
+```sh
+pio run -t upload --upload-port /dev/ttyACM0
+```
+
+(Replace `/dev/ttyACM0` with the port you saw.)
+
+- The board should reset and the upload progress will appear.  
+- When it says `SUCCESS` the code is running on the device.
+
+
+If you edit the `main.cpp` file, or change the background images, then this is the command you need to run to rebuild the code & send it to the device.
+
+### Useful extra commands
+
+| Command | What it does |
+| :---- | :---- |
+| `pio run` | Build only |
+| `pio run -t upload` | Build \+ upload (auto-detects port if only one is present) |
+| `pio device monitor` | Open serial monitor (115200 baud) to see the `Serial.printf` output |
+| `pio run -t clean` | Clean build files if something gets stuck |
+| `pio pkg update` | Update libraries |
+
+If you want to debug your code you can send a `printf()` to the serial port with `Serial.printf()` then view the output using
+
+```sh
+pio device monitor --port /dev/ttyACM0 --baud 115200
+```
+
+NOTE: if there is a lot of output, your program might stop running, waiting for you to read the output using this `monitor` command.  
