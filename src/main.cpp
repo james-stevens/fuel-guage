@@ -69,9 +69,10 @@ public:
 LGFX tft;
 LGFX_Sprite needle(&tft);
 
-// ---- Tune these after you measure the real sender ----
+
 const float EMPTY_OHMS = 150.0f;
 const float FULL_OHMS  = 29.0f;
+
 
 const int EMPTY_ANGLE = 318;
 const int FULL_ANGLE  = 402;
@@ -117,7 +118,7 @@ float raw = readFuelOhms();
 	for (int i = 0; i < n; i++) sum += buf[i];
 	float ohms = sum / n;
 
-	// return 56.0;
+	return 120.0;
 
 	if (ohms < 25.0) return -1.0f;
 	return ohms;
