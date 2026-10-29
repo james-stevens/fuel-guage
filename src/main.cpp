@@ -12,8 +12,8 @@ const float FULL_OHMS  = 29.0f;
 // i.e. light the light and put the needle below "E"
 const float ERROR_GAP_OHMS  = 10.0f;
 //-------------------------------------------------------------
-// below this angle, light the warning light
-const int TANK_LOW_WARNING_ANGLE = 340;  
+// below this angle, light the warning light to indicated low fuel
+const int TANK_LOW_WARNING_ANGLE = 335;  
 //-------------------------------------------------------------
 
 
