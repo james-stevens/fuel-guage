@@ -1,8 +1,21 @@
 #define LGFX_USE_V1
 #include <esp_wifi.h>
 #include <esp_bt.h>
-
 #include <LovyanGFX.hpp>
+
+//-------------------------------------------------------------
+// These numbers you will prob need to change to match your car
+//-------------------------------------------------------------
+const float EMPTY_OHMS = 150.0f;
+const float FULL_OHMS  = 29.0f;
+// if outside the range above, by this amount, indicate an error
+// i.e. light the light and put the needle below "E"
+const float ERROR_GAP_OHMS  = 10.0f;
+//-------------------------------------------------------------
+// below this angle, light the warning light
+const int TANK_LOW_WARNING_ANGLE = 340;  
+//-------------------------------------------------------------
+
 
 class LGFX : public lgfx::LGFX_Device {
   lgfx::Panel_ST7789 _panel_instance;
@@ -69,15 +82,16 @@ public:
 LGFX tft;
 LGFX_Sprite needle(&tft);
 
+const float MAX_OHMS = ((EMPTY_OHMS>FULL_OHMS)?EMPTY_OHMS:FULL_OHMS)+ERROR_GAP_OHMS;
+const float MIN_OHMS = ((EMPTY_OHMS<FULL_OHMS)?EMPTY_OHMS:FULL_OHMS)-ERROR_GAP_OHMS;
+const float ERROR_OHMS = -1.0;
 
-const float EMPTY_OHMS = 150.0f;
-const float FULL_OHMS  = 29.0f;
-
-
+// These numbers are tied to the background image
 const int EMPTY_ANGLE = 318;
 const int FULL_ANGLE  = 402;
+const int ERROR_ANGLE = EMPTY_ANGLE - 8;
 
-// Voltage divider: 3.3 V -- 330 Ω -- ADC pin -- sender -- GND
+// Voltage divider: 3.3 V -- 330 Ω -- ADC pi (GPIO-1) -- sender -- GND
 // (choose series resistor roughly equal to mid-range sender resistance)
 const int   ADC_PIN = 1;
 const float SERIES_R = 330.0f;
@@ -95,7 +109,7 @@ float readFuelOhms()
 {
 	int raw = analogRead(ADC_PIN);
 	float v = (raw / 4095.0f) * VCC;
-	if (v < 0.01f) return EMPTY_OHMS;          // avoid div-by-zero
+	if (v < 0.01f) return 0;
 	float r = SERIES_R * (v / (VCC - v));
 	return r;
 }
@@ -109,6 +123,8 @@ static int idx = 0;
 static bool filled = false;
 float raw = readFuelOhms();
 
+	if (raw == ERROR_OHMS) return ERROR_OHMS;
+
 	buf[idx] = raw;
 	idx = (idx + 1) % AVG_SAMPLES;
 	if (idx == 0) filled = true;
@@ -118,9 +134,9 @@ float raw = readFuelOhms();
 	for (int i = 0; i < n; i++) sum += buf[i];
 	float ohms = sum / n;
 
-	return 120.0;
+	// Serial.printf("ohms %.1f\n",ohms);
 
-	if (ohms < 25.0) return -1.0f;
+	if ((ohms < MIN_OHMS)||(ohms > MAX_OHMS)) return ERROR_OHMS;
 	return ohms;
 }
 
@@ -128,12 +144,11 @@ float raw = readFuelOhms();
 
 int ohmsToAngle(float ohms) 
 {
-	if (ohms < 0) {                       // fault sentinel from filteredOhms()
-		return EMPTY_ANGLE - 5;            // park below E
-		}
+	if (ohms < 0) return ERROR_ANGLE;
 
 	int angle = map(ohms * 10, EMPTY_OHMS * 10, FULL_OHMS * 10,
 				  EMPTY_ANGLE, FULL_ANGLE);
+
 	return constrain(angle, EMPTY_ANGLE, FULL_ANGLE);
 }
 
@@ -205,6 +220,7 @@ void setup()
 	esp_wifi_stop();          // extra safety
 	esp_bt_controller_disable();
 	Serial.begin(115200);
+	tft.setBrightness(255);   // normal day brightness
 
 	analogReadResolution(12);
 	pinMode(ADC_PIN, INPUT);
@@ -229,19 +245,32 @@ void setup()
 }
 
 
+
+void debug_sender()
+{
+	static int id=0;
+	int raw = analogRead(ADC_PIN);
+	float volts = raw * 3.3f / 4095.0f;
+	float ohms = readFuelOhms();
+
+	Serial.printf("%03d: raw=%d  volts=%.2f  ohms=%.1f\n",id++, raw, volts, ohms);
+}
+
+
+
 void loop()
 {
 	static int lastAngle = -999;
 	int angle = ohmsToAngle(filteredOhms());
 
+	// uncomment this line if you are trying to debug the wiring in the car
+	// then use `pio device monitor ...` to watch the output
+	debug_sender();
+
 	// Only update the display if the needle has moved at least 1°
 	if (abs(angle - lastAngle) >= 1) {
 		setCpuFrequencyMhz(240);
-		if (angle < 340) {
-			tft.pushImage(0, 0, 320, 170, light_on_small);
-		} else {
-			tft.pushImage(0, 0, 320, 170, light_off_small);
-		}
+		tft.pushImage(0, 0, 320, 170, ((angle < TANK_LOW_WARNING_ANGLE)?light_on_small:light_off_small));
 		needle.pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
 		lastAngle = angle;
 		}
@@ -250,7 +279,16 @@ void loop()
 	delay(250);
 }
 
+
+
 /*
+		I will be usign this later
+		This code looks at GPIO-2 to see if you've switch the car light on
+		and dims the screen if you have
+		NOTE: it requires a 2-resistor voltage divider installed
+		      you CAN'T just wire the car's 12v to GPIO-2
+
+
 const int LIGHTS_PIN = 2;   // or any free GPIO
 
 // in setup()
