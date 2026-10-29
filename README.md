@@ -39,6 +39,12 @@ A “normal” 0–200 Ω sender (empty \= low resistance) is widespread, but yo
 
 The code doesn’t mind if yours goes forward or reverse.
 
+### Import Note
+
+It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings to put into the code is to uncomment the `debug_sender();` line in `loop()` and use `pio device monitor` (see below) to see the real readings coming from your car, using as much of the same wiring you plan to use when the gauge is properly installed.
+
+The module will not be 100% accurate and the wiring in the car will affect the reading. So wiring the module to the car in the way you intend, then taking an “Empty” and “Full” from the car, is the best way to ensure your fuel gauge is as accurate as possible.
+
 ## To Upload the Code
 
 I used an Ubuntu Desktop PC as my development platform, so this works for an Ubuntu PC. For other environments, please ask AI. There are plug-ins for “VS Code”, if you like using that.
@@ -135,4 +141,10 @@ If you want to debug your code you can send a `printf()` to the serial port with
 pio device monitor --port /dev/ttyACM0 --baud 115200
 ```
 
-NOTE: if there is a lot of output, your program might stop running, waiting for you to read the output using this `monitor` command.  
+NOTE: if there is a lot of output, your program might stop running, waiting for you to read the output using this `monitor` command.
+
+## Powering Your Module
+
+If you have a spare USB outlet in your car, then use this to power the module. If not, you can buy power adapters intended for Dashcams that will do a good job. They are available in a wide range of different configurations, generally either ones that are hidden and wire (or connect) into the car or ones that plug into a car’s 12v “lighter” socket.
+
+I bought [this one](https://www.amazon.co.uk/dp/B0F5P6QC2F), but any will do. You might want to get one with a 90 degree USB plug.
