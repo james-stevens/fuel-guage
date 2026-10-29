@@ -12,18 +12,22 @@ You will need to tell it the image is 320x170, otherwise it’s default options 
 
 The two images I used are in the `images/` directory called `light off small.jpg` and `light on small.jpg` and converted into `light_on_small.h` and `light_off_small.h` using that site. If you want to replace the background image, but do not want a warning light, you can either change `main.cpp` to remove that feature, or simply use the same image for both states.
 
-## Your Fuel Gauge
+## Your Fuel Sender
 
-It is highly likely your fuel sender will NOT read the same way as mine.
+A car’s fuel sender is the unit in the fuel tank that tells the car the fuel level. It is nearly always a rotational variable resistor that changes resistance as a float moves up & down turning the dial of the resistor. Exactly like combining a toilet float value and a radio volume control.
 
-Below are the critical two lines, about line 73 in `main.cpp`. You will need to use a multimeter to get these resistance readings from your own car. Disconnect the fuel sender from the car and measure it when the tank is empty and full.
+Given the oddities of my car, it is highly likely your fuel sender will NOT read the same way as mine.
 
-You can try just guessing and see if the needle goes to the right place, but obviously measuring is better.
+Below are the critical two lines, at the start of [`src/main.cpp`](http://src/main.cpp). You will need to get these resistance readings from your own car. Disconnect the fuel sender from the car and measure it when the tank is empty and full, either using a multimeter or using your module (better, see below).
+
+You can try just guessing and see if the needle goes to the right place, but obviously measuring is better. If the fuel is at a known level and you measure the resistance, you can guess that the sender will be linear and calculate the top & bottom, but measuring is better. If you have a normal tank mounted at a normal angle (flat), then it’s likely your float can free travel through its full range. Mine can’t.
 
 ```c
 const float EMPTY_OHMS = 150.0f;
 const float FULL_OHMS  = 29.0f;
 ```
+
+These are the **ONLY** two lines of code you **MUST** change.
 
 Typical ranges you might see:
 
@@ -37,21 +41,21 @@ Typical ranges you might see:
 
 A “normal” 0–200 Ω sender (empty \= low resistance) is widespread, but you always have to check the actual empty/full values for the unit being used. Your code only needs those two numbers changed.
 
-The code doesn’t mind if yours goes forward or reverse.
+The code doesn’t mind if yours goes forward or reverse. Mine actually works forward (0-200), but had to be fitted upside down, so actually goes in reverse & the odd shape of my tank means the float can’t travel its full distance. Hence building this.
 
 ### Import Note
 
-It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings to put into the code is to uncomment the `debug_sender();` line in `loop()` and use `pio device monitor` (see below) to see the real readings coming from your car, using as much of the same wiring you plan to use when the gauge is properly installed.
+It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings, to put into the code, is to uncomment the `debug_sender();` line in `loop()` and use `pio device monitor` (see below) to see the real readings coming from your car, using as much of the same wiring you plan to use when the gauge is properly installed.
 
 The module will not be 100% accurate and the wiring in the car will affect the reading. So wiring the module to the car in the way you intend, then taking an “Empty” and “Full” from the car, is the best way to ensure your fuel gauge is as accurate as possible.
 
 ## To Upload the Code
 
-I used an Ubuntu Desktop PC as my development platform, so this works for an Ubuntu PC. For other environments, please ask AI. There are plug-ins for “VS Code”, if you like using that.
+The development system is called *PlatformIO*, but if you tell the AI what device you have it will tell you how to get the code working.
 
-The development system is called “PlatformIO”, but if you tell the AI what device you have it will tell you how to get the code working.
+I used an Ubuntu Desktop PC as my development platform, so all these commands are for an Ubuntu PC. For other environments, please ask AI. There are *PlatformIO* plug-ins for “VS Code”, if you prefer using that.
 
-If you use a different device from me, you may need to change `platform.ini` and the panel set up at the start of `main.cpp`. 
+If you use a different device from me, you may need to change `platform.ini` and the panel set up at the start of `main.cpp`. As an AI. Tell it which module I used, and which one you bought, and it will tell you what to change.
 
 ### Install PlatformIO CLI on Ubuntu
 
@@ -117,13 +121,13 @@ You should see something like `/dev/ttyACM0` or `/dev/ttyUSB0`.
 pio run -t upload --upload-port /dev/ttyACM0
 ```
 
-(Replace `/dev/ttyACM0` with the port you saw.)
+(Replace `/dev/ttyACM0` with the port you saw from the `ls` above.)
 
 - The board should reset and the upload progress will appear.  
 - When it says `SUCCESS` the code is running on the device.
 
 
-If you edit the `main.cpp` file, or change the background images, then this is the command you need to run to rebuild the code & send it to the device.
+If you edit the `main.cpp` file, or change the background images, then just run this command again to rebuild the code & send it to the device.
 
 ### Useful extra commands
 
@@ -141,7 +145,7 @@ If you want to debug your code you can send a `printf()` to the serial port with
 pio device monitor --port /dev/ttyACM0 --baud 115200
 ```
 
-NOTE: if there is a lot of output, your program might stop running, waiting for you to read the output using this `monitor` command.
+NOTE: if there is a lot of output, and you are not running `pio device monitor`, your program might stop running, waiting for you to read the output using this `monitor` command.
 
 ## Powering Your Module
 
