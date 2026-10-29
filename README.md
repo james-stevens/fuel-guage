@@ -18,7 +18,7 @@ A car’s fuel sender is the unit in the fuel tank that tells the car the fuel l
 
 Given the oddities of my car, it is highly likely your fuel sender will NOT read the same way as mine.
 
-Below are the critical two lines, at the start of [`src/main.cpp`](http://src/main.cpp). You will need to get these resistance readings from your own car. Disconnect the fuel sender from the car and measure it when the tank is empty and full, either using a multimeter or using your module (better, see below).
+Below are the critical two lines, at the start of [`src/main.cpp`](src/main.cpp). You will need to get these resistance readings from your own car. Disconnect the fuel sender from the car and measure it when the tank is empty and full, either using a multimeter or using your module (better, see below).
 
 You can try just guessing and see if the needle goes to the right place, but obviously measuring is better. If the fuel is at a known level and you measure the resistance, you can guess that the sender will be linear and calculate the top & bottom, but measuring is better. If you have a normal tank mounted at a normal angle (flat), then it’s likely your float can free travel through its full range. Mine can’t.
 
