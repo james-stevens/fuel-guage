@@ -28,7 +28,7 @@ const int LIGHTS_GPIO_PIN = 0;
 //-------------------------------------------------------------
 // Tweak these numbers to adjust the screen brightness
 //-------------------------------------------------------------
-const int BRIGHTNESS_DAY_TIME = 255;
+const int BRIGHTNESS_LIGHTS_OFF = 255;
 const int BRIGHTNESS_LIGHTS_ON = 80;
 
 
@@ -249,7 +249,7 @@ void setup()
 
 	tft.init();
 	tft.setRotation(3);
-	tft.setBrightness(BRIGHTNESS_DAY_TIME);   // normal day brightness
+	tft.setBrightness(BRIGHTNESS_LIGHTS_OFF);   // normal day brightness
 	tft.setSwapBytes(true);          // try false if colours are wrong
 
 	pinMode(15, OUTPUT); // switch screen on
@@ -280,6 +280,19 @@ void debug_sender()
 
 
 
+void check_lights()
+{
+static int lastLights = -999;
+int lights_now = digitalRead(LIGHTS_GPIO_PIN);
+
+	if (lights_now == lastLights) return;
+
+	tft.setBrightness((lights_now == HIGH)?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF);
+	lastLights = lights_now;
+}
+
+
+
 void loop()
 {
 	static int lastAngle = -999;
@@ -297,13 +310,7 @@ void loop()
 		lastAngle = angle;
 		}
 
-	if (LIGHTS_GPIO_PIN) {
-		if (digitalRead(LIGHTS_GPIO_PIN) == HIGH) {
-			tft.setBrightness(BRIGHTNESS_LIGHTS_ON);  // dim when car lights on
-		} else {
-			tft.setBrightness(BRIGHTNESS_DAY_TIME);   // normal day brightness
-		}
-	}
+	if (LIGHTS_GPIO_PIN) check_lights();
 
 	setCpuFrequencyMhz(80);
 	delay(250);
