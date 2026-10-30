@@ -1,0 +1,2 @@
+#! /bin/sh
+pio run -t upload --upload-port /dev/ttyACM0
