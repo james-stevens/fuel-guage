@@ -4,13 +4,13 @@ Custom car fuel gauge using a [LILYGO T-Display-S3 ESP32-S3 LCD Display](https:/
 
 I have a kit car with a custom fuel tank, mounted at an odd angle and an old Ford instrument cluster. Getting an accurate fuel gauge reading was becoming really hard, so I decided to build a digital one, with a “vintage” look and feel.
 
-I’ve never coded for these devices before, or any similar, so all the coding was done by Grok. If you want to customise the code, I highly recommend uploading `main.cpp` to an AI and just asking for the changes you want. This is pretty much all I did.
+I’ve never coded for these devices before, or any similar, so all the coding was done by Grok. If you want to customise the code, I highly recommend uploading [`src/main.cpp`](src/main.cpp) to an AI and just asking for the changes you want. This is pretty much all I did.
 
 The JPG images were converted to header files using [https\://projedefteri.com/tools/image-to-rgb565-converter/](https://projedefteri.com/tools/image-to-rgb565-converter/) 
 
 You will need to tell it the image is 320x170, otherwise it’s default options are correct, e.g. the output needs to be “RGB656 16 bit, hex”.
 
-The two images I used are in the `images/` directory called `light off small.jpg` and `light on small.jpg` and converted into `light_on_small.h` and `light_off_small.h` using that site. If you want to replace the background image, but do not want a warning light, you can either change `main.cpp` to remove that feature, or simply use the same image for both states.
+The two images I used are in the `images/` directory called `light off small.jpg` and `light on small.jpg` and converted into `light_on_small.h` and `light_off_small.h` using that site. If you want to replace the background image, but do not want a warning light, you can either change [`src/main.cpp`](src/main.cpp) to remove that feature, or simply use the same image for both states.
 
 ## Your Fuel Sender
 
@@ -55,7 +55,7 @@ The development system is called *PlatformIO*, but if you tell the AI what devic
 
 I used an Ubuntu Desktop PC as my development platform, so all these commands are for an Ubuntu PC. For other environments, please ask AI. There are *PlatformIO* plug-ins for “VS Code”, if you prefer using that.
 
-If you use a different device from me, you may need to change `platform.ini` and the panel set up at the start of `main.cpp`. As an AI. Tell it which module I used, and which one you bought, and it will tell you what to change.
+If you use a different device from me, you may need to change `platform.ini` and the panel set up at the start of [`src/main.cpp`](src/main.cpp). As an AI. Tell it which module I used, and which one you bought, and it will tell you what to change.
 
 ### Install PlatformIO CLI on Ubuntu
 
@@ -127,7 +127,7 @@ pio run -t upload --upload-port /dev/ttyACM0
 - When it says `SUCCESS` the code is running on the device.
 
 
-If you edit the `main.cpp` file, or change the background images, then just run this command again to rebuild the code & send it to the device.
+If you edit the [`src/main.cpp`](src/main.cpp) file, or change the background images, then just run this command again to rebuild the code & send it to the device.
 
 ### Useful extra commands
 
@@ -151,4 +151,6 @@ NOTE: if there is a lot of output, and you are not running `pio device monitor`,
 
 If you have a spare USB outlet in your car, then use this to power the module. If not, you can buy power adapters intended for Dashcams that will do a good job. They are available in a wide range of different configurations, generally either ones that are hidden and wire (or connect) into the car or ones that plug into a car’s 12v “lighter” socket.
 
-I bought [this one](https://www.amazon.co.uk/dp/B0F5P6QC2F), but any will do. You might want to get one with a 90 degree USB plug.
+I bought [this one](https://www.amazon.co.uk/dp/B0CWNKW2LH), but any will do. Just make sure you get one that ends with a USB-C as many car dash cams have older USB socket types (mini & micro). You might also want to get one with a 90 degree USB plug.
+
+I also bought these [Dual Lock pads](https://www.amazon.co.uk/dp/B0BSTG1GH5) to secure the fuel gauge module and the USB power supply, so they are secure, but can still be easily removed, if necessary.
