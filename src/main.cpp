@@ -9,12 +9,31 @@
 const float EMPTY_OHMS = 150.0f;
 const float FULL_OHMS  = 29.0f;
 // if outside the range above, by this amount, indicate an error
-// i.e. light the light and put the needle below "E"
+// i.e. light the warning light and put the needle below "E"
 const float ERROR_GAP_OHMS  = 10.0f;
+
+// Set this to a value more than 0.01 to fake a reading from the car's sender
+const float FAKE_CAR_READING = 0.0;
+
 //-------------------------------------------------------------
 // below this angle, light the warning light to indicated low fuel
 const int TANK_LOW_WARNING_ANGLE = 335;  
+
 //-------------------------------------------------------------
+// Set LIGHTS_GPIO_PIN to the GPIO line you have wired to detect
+// when the car lights are on - `0`=disable feature
+//-------------------------------------------------------------
+const int LIGHTS_GPIO_PIN = 0;
+// const int LIGHTS_GPIO_PIN = 2;   // or any free GPIO
+//-------------------------------------------------------------
+// Tweak these numbers to adjust the screen brightness
+//-------------------------------------------------------------
+const int BRIGHTNESS_DAY_TIME = 255;
+const int BRIGHTNESS_LIGHTS_ON = 80;
+
+
+// set this to zero to disable the start-up animation
+const int WITH_START_UP_ANIMATION = 1;
 
 
 class LGFX : public lgfx::LGFX_Device {
@@ -134,7 +153,7 @@ float raw = readFuelOhms();
 	for (int i = 0; i < n; i++) sum += buf[i];
 	float ohms = sum / n;
 
-	// Serial.printf("ohms %.1f\n",ohms);
+	if (FAKE_CAR_READING > 0.01) return FAKE_CAR_READING;
 
 	if ((ohms < MIN_OHMS)||(ohms > MAX_OHMS)) return ERROR_OHMS;
 	return ohms;
@@ -153,9 +172,10 @@ int ohmsToAngle(float ohms)
 }
 
 
+
 void startupSweep() 
 {
-	// E → F
+	// sweep from E to F on start up
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) {
 		tft.pushImage(0, 0, 320, 170, light_off_small);
 		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
@@ -164,21 +184,22 @@ void startupSweep()
 		}
 	delay(10);   // brief pause at Full
 
-	int finalAngle = ohmsToAngle(filteredOhms()) - 2;
+	int finalAngle = ohmsToAngle(filteredOhms());
 
-	// F → actual level
-	if (finalAngle < FULL_ANGLE) {
-		int step = -2;
-		for (int a = FULL_ANGLE; a != finalAngle; a += step) {
-			tft.pushImage(0, 0, 320, 170, light_off_small);
-			needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
-			delay(8);
-			if ((step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle)) break;
-			}
+	// Sweep from F to actual level, unless the level is "F"
+	if (finalAngle == FULL_ANGLE) return;
+
+	int step = -2;
+	for (int a = FULL_ANGLE; a != finalAngle; a += step) {
+		tft.pushImage(0, 0, 320, 170, light_off_small);
+		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
+		delay(8);
+		if ((step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle)) break;
 		}
-	// final precise position
+
+	// End a little below the final positiion to get a little bounce at the end
 	tft.pushImage(0, 0, 320, 170, light_off_small);
-	needle.pushRotateZoom(160, 60 + 180, finalAngle, 1.0f, 1.0f, TFT_TRANSPARENT);
+	needle.pushRotateZoom(160, 60 + 180, finalAngle - 2, 1.0f, 1.0f, TFT_TRANSPARENT);
 }
 
 
@@ -220,14 +241,15 @@ void setup()
 	esp_wifi_stop();          // extra safety
 	esp_bt_controller_disable();
 	Serial.begin(115200);
-	tft.setBrightness(255);   // normal day brightness
+	setCpuFrequencyMhz(240);
 
 	analogReadResolution(12);
 	pinMode(ADC_PIN, INPUT);
+	if (LIGHTS_GPIO_PIN) pinMode(LIGHTS_GPIO_PIN, INPUT);
 
 	tft.init();
 	tft.setRotation(3);
-	tft.setBrightness(180);
+	tft.setBrightness(BRIGHTNESS_DAY_TIME);   // normal day brightness
 	tft.setSwapBytes(true);          // try false if colours are wrong
 
 	pinMode(15, OUTPUT); // switch screen on
@@ -239,7 +261,7 @@ void setup()
 	createNeedle();
 
 	// Read the real level once
-	startupSweep();   // play the animation
+	if (WITH_START_UP_ANIMATION) startupSweep();   // play the animation
 
 	setCpuFrequencyMhz(80);   // drop from 240 MHz to 80 MHz — plenty for a gauge
 }
@@ -263,7 +285,7 @@ void loop()
 	static int lastAngle = -999;
 	int angle = ohmsToAngle(filteredOhms());
 
-	// uncomment this line if you are trying to debug the wiring in the car
+	// uncomment the "debug_sender();" line if you are trying to debug the wiring in the car
 	// then use `pio device monitor ...` to watch the output
 	debug_sender();
 
@@ -275,29 +297,14 @@ void loop()
 		lastAngle = angle;
 		}
 
+	if (LIGHTS_GPIO_PIN) {
+		if (digitalRead(LIGHTS_GPIO_PIN) == HIGH) {
+			tft.setBrightness(BRIGHTNESS_LIGHTS_ON);  // dim when car lights on
+		} else {
+			tft.setBrightness(BRIGHTNESS_DAY_TIME);   // normal day brightness
+		}
+	}
+
 	setCpuFrequencyMhz(80);
 	delay(250);
 }
-
-
-
-/*
-		I will be usign this later
-		This code looks at GPIO-2 to see if you've switch the car light on
-		and dims the screen if you have
-		NOTE: it requires a 2-resistor voltage divider installed
-		      you CAN'T just wire the car's 12v to GPIO-2
-
-
-const int LIGHTS_PIN = 2;   // or any free GPIO
-
-// in setup()
-pinMode(LIGHTS_PIN, INPUT);
-
-// in loop(), before or after the needle update
-if (digitalRead(LIGHTS_PIN) == HIGH) {
-  tft.setBrightness(60);    // dim for night
-} else {
-  tft.setBrightness(180);   // normal day brightness
-}
-*/
