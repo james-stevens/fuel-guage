@@ -121,7 +121,7 @@ const float SERIES_R = 330.0f;
 const float VCC = 3.3f;
 
 // Simple moving average
-const int   AVG_SAMPLES = 8;
+const int   AVG_SAMPLES = 16;
 float       avgBuf[AVG_SAMPLES];
 int         avgIdx = 0;
 bool        avgFilled = false;
@@ -305,7 +305,7 @@ void loop()
 	debug_sender();
 
 	// Only update the display if the needle has moved at least 1°
-	if (abs(angle - lastAngle) >= 1) {
+	if (abs(angle - lastAngle) >= 2) {
 		setCpuFrequencyMhz(240);
 		tft.pushImage(0, 0, 320, 170, ((angle < TANK_LOW_WARNING_ANGLE)?light_on_small:light_off_small));
 		needle.pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
