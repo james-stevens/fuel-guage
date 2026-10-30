@@ -101,14 +101,18 @@ public:
 LGFX tft;
 LGFX_Sprite needle(&tft);
 
-const float MAX_OHMS = ((EMPTY_OHMS>FULL_OHMS)?EMPTY_OHMS:FULL_OHMS)+ERROR_GAP_OHMS;
-const float MIN_OHMS = ((EMPTY_OHMS<FULL_OHMS)?EMPTY_OHMS:FULL_OHMS)-ERROR_GAP_OHMS;
-const float ERROR_OHMS = -1.0;
-
 // These numbers are tied to the background image
 const int EMPTY_ANGLE = 318;
 const int FULL_ANGLE  = 402;
 const int ERROR_ANGLE = EMPTY_ANGLE - 8;
+
+const int MIN_ANGLE = min(EMPTY_ANGLE, FULL_ANGLE);
+const int MAX_ANGLE = max(EMPTY_ANGLE, FULL_ANGLE);
+const float MIN_OHMS = min(EMPTY_OHMS, FULL_OHMS) - ERROR_GAP_OHMS;
+const float MAX_OHMS = max(EMPTY_OHMS, FULL_OHMS) + ERROR_GAP_OHMS;
+
+const float ERROR_OHMS = -1.0;
+
 
 // Voltage divider: 3.3 V -- 330 Ω -- ADC pi (GPIO-1) -- sender -- GND
 // (choose series resistor roughly equal to mid-range sender resistance)
@@ -142,8 +146,6 @@ static int idx = 0;
 static bool filled = false;
 float raw = readFuelOhms();
 
-	if (raw == ERROR_OHMS) return ERROR_OHMS;
-
 	buf[idx] = raw;
 	idx = (idx + 1) % AVG_SAMPLES;
 	if (idx == 0) filled = true;
@@ -168,7 +170,7 @@ int ohmsToAngle(float ohms)
 	int angle = map(ohms * 10, EMPTY_OHMS * 10, FULL_OHMS * 10,
 				  EMPTY_ANGLE, FULL_ANGLE);
 
-	return constrain(angle, EMPTY_ANGLE, FULL_ANGLE);
+	return constrain(angle, MIN_ANGLE, MAX_ANGLE);
 }
 
 
