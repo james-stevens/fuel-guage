@@ -46,24 +46,21 @@ The code doesn’t mind if yours goes forward or reverse. Mine actually works fo
 Wiring on this car:
 
 ```text
-  fuel tank                                             T-Display-S3 pins
-  ---------                                             -----------------
-                             twisted pair
+  fuel tank                                                                T-Display-S3 pins
+  ---------                                                                -----------------
+                             twisted pair (preferably)
 
-  sender signal -------+----- signal core ------+
+  sender signal -------+----- signal core ------+--[ 330 ohm ]---------------- 3.3V+
                        |                        |
-                   [ sender ]  ~150 ohm empty   +--[ 330 ohm ]-- 3.3V
-                   [  (R)   ]  ~29 ohm full     |
-                       |       on this car      +-------------- GPIO1
+                   [ sender ]                   |
+                       |                        +----------------------------- GPIO1
                        |                        |
                        |                        +--------[ 100 nF ]--------+
                        |                          optional, at the module  |
-  tank mounting bolt --+----- ground core ---------------------------------+-- GND
-                       |
-                       +-- bonding jumper --> chassis
-                           (separate wire; must stay
-                            for static / fuel safety)
+  sender local ground -+----- ground core ---------------------------------+-- GND
+
 ```
+Optionally, you can use a shielded cable. If you do this ground the shield to the car's chassis at both ends.
 
 ### Import Note
 
