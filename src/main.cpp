@@ -20,16 +20,26 @@ const float FAKE_CAR_READING = 0.0;
 const int TANK_LOW_WARNING_ANGLE = 335;  
 
 //-------------------------------------------------------------
-// Set LIGHTS_GPIO_PIN to the GPIO line you have wired to detect
-// when the car lights are on - `0`=disable feature
+// Set LIGHTS_GPIO_PIN to 2 when the lights divider is wired.
+// Leave it at 0 until then: an unconnected pin floats, so the
+// feature stays off. Divider: 47k from the 12 V lights feed to
+// the GPIO, 10k from the GPIO to GND, 100 nF across the 10k.
 //-------------------------------------------------------------
-const int LIGHTS_GPIO_PIN = 0;
-// const int LIGHTS_GPIO_PIN = 2;   // or any free GPIO
+const int LIGHTS_GPIO_PIN = 0;   // set to 2 when the divider is wired: 47k from the 12 V lights feed to the pin, 10k from the pin to GND, 100 nF across the 10k
 //-------------------------------------------------------------
 // Tweak these numbers to adjust the screen brightness
 //-------------------------------------------------------------
 const int BRIGHTNESS_LIGHTS_OFF = 255;
 const int BRIGHTNESS_LIGHTS_ON = 80;
+// Fade the backlight between those two over about this long
+const int FADE_MS = 1000;
+// analogReadMilliVolts() hysteresis on the divider output.
+// Lights ON above LIGHTS_ON_MV, OFF below LIGHTS_OFF_MV, else hold.
+const int LIGHTS_ON_MV  = 1600;
+const int LIGHTS_OFF_MV = 1200;
+// check_lights() runs every loop (~250 ms). The new state must be
+// seen this many times in a row (~1 s) before the brightness changes.
+const int STABLE_LOOPS = 4;
 
 
 // set this to zero to disable the start-up animation
@@ -282,15 +292,53 @@ void debug_sender()
 
 
 
+void fadeBrightness(int from, int to)
+{
+int step;
+int levels;
+int stepMs;
+
+	if (from == to) return;
+
+	step = (to > from)?1:-1;
+	levels = abs(to - from);
+	stepMs = FADE_MS / levels;
+	if (stepMs < 1) stepMs = 1;
+
+	for (int i = 0; i < levels; i++) {
+		from += step;
+		tft.setBrightness(from);
+		delay(stepMs);
+		}
+}
+
+
+
 void check_lights()
 {
-static int lastLights = -999;
-int lights_now = digitalRead(LIGHTS_GPIO_PIN);
+static bool lightsOn = false;
+static int stableCount = 0;
+static int brightness = BRIGHTNESS_LIGHTS_OFF;
+int mv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
+bool seen = lightsOn;
+int target;
 
-	if (lights_now == lastLights) return;
+	if (mv > LIGHTS_ON_MV) seen = true;
+	else if (mv < LIGHTS_OFF_MV) seen = false;
 
-	tft.setBrightness((lights_now == HIGH)?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF);
-	lastLights = lights_now;
+	if (seen == lightsOn) {
+		stableCount = 0;
+		return;
+		}
+
+	stableCount++;
+	if (stableCount < STABLE_LOOPS) return;
+
+	target = seen?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF;
+	fadeBrightness(brightness, target);
+	brightness = target;
+	lightsOn = seen;
+	stableCount = 0;
 }
 
 
@@ -302,7 +350,7 @@ void loop()
 
 	// uncomment the "debug_sender();" line if you are trying to debug the wiring in the car
 	// then use `pio device monitor ...` to watch the output
-	debug_sender();
+	// debug_sender();
 
 	// Only update the display if the needle has moved at least 1°
 	if (abs(angle - lastAngle) >= 2) {

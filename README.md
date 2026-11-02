@@ -154,3 +154,36 @@ If you have a spare USB outlet in your car, then use this to power the module. I
 I bought [this one](https://www.amazon.co.uk/dp/B0CWNKW2LH), but any will do. Just make sure you get one that ends with a USB-C as many car dash cams have older USB socket types (mini & micro). You might also want to get one with a 90 degree USB plug.
 
 I also bought these [Dual Lock pads](https://www.amazon.co.uk/dp/B0BSTG1GH5) to secure the fuel gauge module and the USB power supply, so they are secure, but can still be easily removed, if necessary.
+
+## Dim the Screen When the Lights Are On
+
+Optional. The backlight can fade down when the car’s lights are on, and fade back up when they are off. It stays disabled until you wire the divider and change the pin below.
+
+The lights feed is about 12-14.7 V, and it is only live when the ignition is on. **Never connect 12 V directly to a GPIO** — that will damage the board. Use a divider into GPIO2:
+
+- 47k from the 12 V lights feed to GPIO2
+- 10k from GPIO2 to GND
+- 100 nF capacitor across the 10k (GPIO2 to GND)
+
+GPIO2 then sees about 2.1 V at 12 V, about 2.6 V at 14.7 V, and 0 V when the lights are off. About 2.1 V is borderline for a digital HIGH, so the firmware reads the pin with `analogReadMilliVolts()`. The pin is left as `INPUT` with no internal pull-up; the 10k to GND is the pulldown.
+
+Once the divider is fitted, set this in [`src/main.cpp`](src/main.cpp):
+
+```c
+const int LIGHTS_GPIO_PIN = 2;
+```
+
+Leave it at `0` if nothing is connected. An unconnected pin floats, and the screen would dim at random.
+
+The thresholds and the fade sit with the other tweakable constants at the top of that file:
+
+| Constant | Default | What it does |
+| :---- | :---- | :---- |
+| `BRIGHTNESS_LIGHTS_OFF` | 255 | Backlight with the lights off |
+| `BRIGHTNESS_LIGHTS_ON` | 80 | Backlight with the lights on |
+| `LIGHTS_ON_MV` | 1600 | Lights count as on above this (millivolts) |
+| `LIGHTS_OFF_MV` | 1200 | Lights count as off below this (millivolts) |
+| `STABLE_LOOPS` | 4 | Consecutive loops the new state must hold (~250 ms each, so ~1 s) |
+| `FADE_MS` | 1000 | How long the backlight takes to fade between the two levels |
+
+A reading between the two thresholds keeps the previous state, so a small change in voltage does not flicker the backlight. The gauge starts up assuming the lights are off.
