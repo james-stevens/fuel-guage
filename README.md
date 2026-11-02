@@ -46,25 +46,23 @@ The code doesn’t mind if yours goes forward or reverse. Mine actually works fo
 Wiring on this car:
 
 ```text
-  T-Display-S3 pins                                                       fuel tank
-  -----------------                                                       ---------
-                                      dedicated 2-core cable, twisted or screened
+  fuel tank                                             T-Display-S3 pins
+  ---------                                             -----------------
+                               twisted pair
 
-          3.3V --[ 330 ohm ]--+
-                              |                  signal core
-  GPIO1 ----------------------+-----------------------------------------------+ sender signal terminal
-                              |                                               |
-                              |                                               | [ sender ]
-                              +--[ 100 nF ]------+                            | ~150 ohm empty
-                                    optional     |                            | ~29 ohm full
-                                  at the module  |                            | on this car
-                                      GND -------+                            |
-                                                 |        ground core         |
-                                                 +----------------------------+ tank mounting bolt
-                                                 |                            |
-                                                 +-- screen, this end only    +-- bonding jumper --> chassis
-                                                  (if screened; tank end open)    (separate wire; must stay
-                                                                                   for static / fuel safety)
+  sender signal ------------+-- signal core --+
+                            |                 |
+                            |                 +--[ 330 ohm ]-- 3.3V
+                            | [ sender ]      |
+                            | ~150 ohm empty  +-------------- GPIO1
+                            | ~29 ohm full    |
+                            | on this car     +--------[ 100 nF ]--------+
+                            |                   optional, at the module  |
+  tank mounting bolt -------+-- ground core -----------------------------+-- GND
+                            |
+                            +-- bonding jumper --> chassis
+                                (separate wire; must stay
+                                 for static / fuel safety)
 ```
 
 ### Import Note
