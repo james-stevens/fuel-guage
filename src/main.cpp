@@ -45,6 +45,10 @@ const int STABLE_LOOPS = 4;
 // set this to zero to disable the start-up animation
 const int WITH_START_UP_ANIMATION = 1;
 
+// number of readings from the sender to average over
+// smooths out the arrow movement to stop jittering
+const int   SENDER_AVG_SAMPLES = 8;
+
 
 class LGFX : public lgfx::LGFX_Device {
   lgfx::Panel_ST7789 _panel_instance;
@@ -131,8 +135,7 @@ const float SERIES_R = 330.0f;
 const float VCC = 3.3f;
 
 // Simple moving average
-const int   AVG_SAMPLES = 16;
-float       avgBuf[AVG_SAMPLES];
+float       avgBuf[SENDER_AVG_SAMPLES];
 int         avgIdx = 0;
 bool        avgFilled = false;
 
@@ -151,16 +154,16 @@ float readFuelOhms()
 
 float filteredOhms() 
 {
-static float buf[AVG_SAMPLES];
+static float buf[SENDER_AVG_SAMPLES];
 static int idx = 0;
 static bool filled = false;
 float raw = readFuelOhms();
 
 	buf[idx] = raw;
-	idx = (idx + 1) % AVG_SAMPLES;
+	idx = (idx + 1) % SENDER_AVG_SAMPLES;
 	if (idx == 0) filled = true;
 
-	int n = filled ? AVG_SAMPLES : idx;
+	int n = filled ? SENDER_AVG_SAMPLES : idx;
 	float sum = 0;
 	for (int i = 0; i < n; i++) sum += buf[i];
 	float ohms = sum / n;
@@ -350,7 +353,7 @@ void loop()
 
 	// uncomment the "debug_sender();" line if you are trying to debug the wiring in the car
 	// then use `pio device monitor ...` to watch the output
-	// debug_sender();
+	debug_sender();
 
 	// Only update the display if the needle has moved at least 1°
 	if (abs(angle - lastAngle) >= 2) {
@@ -363,5 +366,5 @@ void loop()
 	if (LIGHTS_GPIO_PIN) check_lights();
 
 	setCpuFrequencyMhz(80);
-	delay(250);
+	delay(150);
 }
