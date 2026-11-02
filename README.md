@@ -58,12 +58,12 @@ Wiring on this car:
                               +--[ 100 nF ]------+                            | ~150 ohm empty
                                     optional     |                            | ~29 ohm full
                                   at the module  |                            | on this car
-  GND ------------------------+------------------+                            |
-                              |                  ground core                  |
-                              +-----------------------------------------------+ tank mounting bolt
-                              |                                               |
-                              +-- screen, this end only                       +-- bonding jumper --> chassis
-                                  (if screened; tank end open)                    (separate wire; must stay
+                                      GND -------+                            |
+                                                 |        ground core         |
+                                                 +----------------------------+ tank mounting bolt
+                                                 |                            |
+                                                 +-- screen, this end only    +-- bonding jumper --> chassis
+                                                  (if screened; tank end open)    (separate wire; must stay
                                                                                    for static / fuel safety)
 ```
 
