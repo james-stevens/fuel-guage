@@ -43,6 +43,30 @@ A “normal” 0–200 Ω sender (empty \= low resistance) is widespread, but yo
 
 The code doesn’t mind if yours goes forward or reverse. Mine actually works forward (0-200), but had to be fitted upside down, so actually goes in reverse & the odd shape of my tank means the float can’t travel its full distance. Hence building this.
 
+Wiring on this car:
+
+```text
+  T-Display-S3 pins                                                       fuel tank
+  -----------------                                                       ---------
+                                      dedicated 2-core cable, twisted or screened
+
+          3.3V --[ 330 ohm ]--+
+                              |                  signal core
+  GPIO1 ----------------------+-----------------------------------------------+ sender signal terminal
+                              |                                               |
+                              |                                               | [ sender ]
+                              +--[ 100 nF ]------+                            | ~150 ohm empty
+                                    optional     |                            | ~29 ohm full
+                                  at the module  |                            | on this car
+  GND ------------------------+------------------+                            |
+                              |                  ground core                  |
+                              +-----------------------------------------------+ tank mounting bolt
+                              |                                               |
+                              +-- screen, this end only                       +-- bonding jumper --> chassis
+                                  (if screened; tank end open)                    (separate wire; must stay
+                                                                                   for static / fuel safety)
+```
+
 ### Import Note
 
 It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings, to put into the code, is to uncomment the `debug_sender();` line in `loop()` and use `pio device monitor` (see below) to see the real readings coming from your car, using as much of the same wiring you plan to use when the gauge is properly installed.
@@ -164,6 +188,25 @@ The lights feed is about 12-14.7 V, and it is only live when the ignition is on.
 - 47k from the 12 V lights feed to GPIO2
 - 10k from GPIO2 to GND
 - 100 nF capacitor across the 10k (GPIO2 to GND)
+
+```text
+  car lights +12 V                                      T-Display-S3 pins
+  live only when the lights are on                      -----------------
+  about 12-14.7 V
+
+       +12 V --[ 47k ]--+
+                        |
+                        +------------------------------ GPIO2
+                        |
+                        +----------[ 10k ]----------+
+                        |                           |
+                        +--------[ 100 nF ]---------+
+                               across the 10k       |
+                                                    +-- GND
+
+  Never connect 12 V directly to a GPIO.
+  Set LIGHTS_GPIO_PIN = 2
+```
 
 GPIO2 then sees about 2.1 V at 12 V, about 2.6 V at 14.7 V, and 0 V when the lights are off. About 2.1 V is borderline for a digital HIGH, so the firmware reads the pin with `analogReadMilliVolts()`. The pin is left as `INPUT` with no internal pull-up; the 10k to GND is the pulldown.
 
