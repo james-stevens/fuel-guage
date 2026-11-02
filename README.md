@@ -48,21 +48,21 @@ Wiring on this car:
 ```text
   fuel tank                                             T-Display-S3 pins
   ---------                                             -----------------
-                               twisted pair
+                             twisted pair
 
-  sender signal ------------+-- signal core --+
-                            |                 |
-                            |                 +--[ 330 ohm ]-- 3.3V
-                            | [ sender ]      |
-                            | ~150 ohm empty  +-------------- GPIO1
-                            | ~29 ohm full    |
-                            | on this car     +--------[ 100 nF ]--------+
-                            |                   optional, at the module  |
-  tank mounting bolt -------+-- ground core -----------------------------+-- GND
-                            |
-                            +-- bonding jumper --> chassis
-                                (separate wire; must stay
-                                 for static / fuel safety)
+  sender signal -------+----- signal core ------+
+                       |                        |
+                   [ sender ]  ~150 ohm empty   +--[ 330 ohm ]-- 3.3V
+                   [  (R)   ]  ~29 ohm full     |
+                       |       on this car      +-------------- GPIO1
+                       |                        |
+                       |                        +--------[ 100 nF ]--------+
+                       |                          optional, at the module  |
+  tank mounting bolt --+----- ground core ---------------------------------+-- GND
+                       |
+                       +-- bonding jumper --> chassis
+                           (separate wire; must stay
+                            for static / fuel safety)
 ```
 
 ### Import Note
