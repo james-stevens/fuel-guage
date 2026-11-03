@@ -34,6 +34,8 @@ const int LIGHTS_GPIO_PIN = 16;
 //-------------------------------------------------------------
 // Tweak these numbers to adjust the screen brightness
 //-------------------------------------------------------------
+// in theory the max brightness is 255,
+// but mine glitched if I used 255 & 250 looks no different
 const int BRIGHTNESS_LIGHTS_OFF = 250;
 const int BRIGHTNESS_LIGHTS_ON = 60;
 // Fade the backlight between those two over about this long
@@ -42,7 +44,7 @@ const int FADE_MS = 1000;
 // Lights ON above LIGHTS_ON_MV, OFF below LIGHTS_OFF_MV, else hold.
 const int LIGHTS_ON_MV  = 1600;
 const int LIGHTS_OFF_MV = 1200;
-// check_lights() runs every loop (~250 ms). The new state must be
+// check_lights() runs every loop (~150 ms). The new state must be
 // seen this many times in a row (~1 s) before the brightness changes.
 const int STABLE_LOOPS = 4;
 
