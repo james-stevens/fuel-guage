@@ -351,6 +351,7 @@ int target;
 	target = seen?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF;
 	fadeBrightness(brightness, target);
 	brightness = target;
+	tft.setBrightness(target);
 	lightsOn = seen;
 	stableCount = 0;
 }
