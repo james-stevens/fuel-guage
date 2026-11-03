@@ -116,9 +116,9 @@ LGFX tft;
 LGFX_Sprite needle(&tft);
 
 // These numbers are tied to the background image
-const int EMPTY_ANGLE = 318;
+const int EMPTY_ANGLE = 315;
 const int FULL_ANGLE  = 402;
-const int ERROR_ANGLE = EMPTY_ANGLE - 8;
+const int ERROR_ANGLE = 310;
 
 const int MIN_ANGLE = min(EMPTY_ANGLE, FULL_ANGLE);
 const int MAX_ANGLE = max(EMPTY_ANGLE, FULL_ANGLE);
