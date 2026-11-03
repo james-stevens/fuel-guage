@@ -6,7 +6,7 @@
 //-------------------------------------------------------------
 // This switches on/off `monitor` messages in the `Serial` port
 // set of `0` for prodution, `1` for debugging
-const int DEBUG_WIRING = 1;  
+const int DEBUG_WIRING = 0;
 
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
@@ -34,8 +34,8 @@ const int LIGHTS_GPIO_PIN = 16;
 //-------------------------------------------------------------
 // Tweak these numbers to adjust the screen brightness
 //-------------------------------------------------------------
-const int BRIGHTNESS_LIGHTS_OFF = 255;
-const int BRIGHTNESS_LIGHTS_ON = 80;
+const int BRIGHTNESS_LIGHTS_OFF = 250;
+const int BRIGHTNESS_LIGHTS_ON = 60;
 // Fade the backlight between those two over about this long
 const int FADE_MS = 1000;
 // analogReadMilliVolts() hysteresis on the divider output.
