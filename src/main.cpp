@@ -4,6 +4,11 @@
 #include <LovyanGFX.hpp>
 
 //-------------------------------------------------------------
+// This switches on/off `monitor` messages in the `Serial` port
+// set of `0` for prodution, `1` for debugging
+const int DEBUG_WIRING = 1;  
+
+//-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
 //-------------------------------------------------------------
 const float EMPTY_OHMS = 150.0f;
@@ -20,12 +25,12 @@ const float FAKE_CAR_READING = 0.0;
 const int TANK_LOW_WARNING_ANGLE = 335;  
 
 //-------------------------------------------------------------
-// Set LIGHTS_GPIO_PIN to 2 when the lights divider is wired.
+// Set LIGHTS_GPIO_PIN to your GPIO pin number when the lights divider is wired.
 // Leave it at 0 until then: an unconnected pin floats, so the
-// feature stays off. Divider: 47k from the 12 V lights feed to
-// the GPIO, 10k from the GPIO to GND, 100 nF across the 10k.
+// feature stays off. For wiring see README
 //-------------------------------------------------------------
-const int LIGHTS_GPIO_PIN = 0;   // set to 2 when the divider is wired: 47k from the 12 V lights feed to the pin, 10k from the pin to GND, 100 nF across the 10k
+const int LIGHTS_GPIO_PIN = 16;
+
 //-------------------------------------------------------------
 // Tweak these numbers to adjust the screen brightness
 //-------------------------------------------------------------
@@ -283,14 +288,20 @@ void setup()
 
 
 
-void debug_sender()
+void debug_wiring()
 {
 	static int id=0;
 	int raw = analogRead(ADC_PIN);
 	float volts = raw * 3.3f / 4095.0f;
 	float ohms = readFuelOhms();
 
-	Serial.printf("%03d: raw=%d  volts=%.2f  ohms=%.1f\n",id++, raw, volts, ohms);
+	Serial.printf("%03d: Sender raw=%d  volts=%.2f  ohms=%.1f",id++, raw, volts, ohms);
+	if (LIGHTS_GPIO_PIN) {
+		int mv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
+		Serial.printf(",  Lights millivolts=%d\n",mv);
+	} else {
+		Serial.printf("\n");
+	}
 }
 
 
@@ -351,9 +362,7 @@ void loop()
 	static int lastAngle = -999;
 	int angle = ohmsToAngle(filteredOhms());
 
-	// uncomment the "debug_sender();" line if you are trying to debug the wiring in the car
-	// then use `pio device monitor ...` to watch the output
-	debug_sender();
+	if (DEBUG_WIRING) debug_wiring();
 
 	// Only update the display if the needle has moved at least 1°
 	if (abs(angle - lastAngle) >= 2) {
