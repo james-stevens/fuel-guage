@@ -4,13 +4,13 @@ Custom car fuel gauge using a [LILYGO T-Display-S3 ESP32-S3 LCD Display](https:/
 
 I have a kit car with a custom fuel tank, mounted at an odd angle and an old Ford instrument cluster. Getting an accurate fuel gauge reading was becoming really hard, so I decided to build a digital one, with a “vintage” look and feel.
 
-I’ve never coded for these devices before, or any similar, so all the coding was done by Grok. If you want to customise the code, I highly recommend uploading [`src/main.cpp`](src/main.cpp) to an AI and just asking for the changes you want. This is pretty much all I did.
+I’ve never coded for these devices before, or any similar, so all the coding was done by Grok. If you want to customise the code, I highly recommend uploading [`src/main.cpp`](http://src/main.cpp) to an AI and just asking for the changes you want. This is pretty much all I did.
 
-The JPG images were converted to header files using [https\://projedefteri.com/tools/image-to-rgb565-converter/](https://projedefteri.com/tools/image-to-rgb565-converter/) 
+The JPG images were converted to header files using [https\://projedefteri.com/tools/image-to-rgb565-converter/](https://projedefteri.com/tools/image-to-rgb565-converter/)
 
 You will need to tell it the image is 320x170, otherwise it’s default options are correct, e.g. the output needs to be “RGB656 16 bit, hex”.
 
-The two images I used are in the `images/` directory called `light off small.jpg` and `light on small.jpg` and converted into `light_on_small.h` and `light_off_small.h` using that site. If you want to replace the background image, but do not want a warning light, you can either change [`src/main.cpp`](src/main.cpp) to remove that feature, or simply use the same image for both states.
+The two images I used are in the `images/` directory called `light off small.jpg` and `light on small.jpg` and converted into `light_on_small.h` and `light_off_small.h` using that site. If you want to replace the background image, but do not want a warning light, you can either change [`src/main.cpp`](http://src/main.cpp) to remove that feature, or simply use the same image for both states.
 
 ## Your Fuel Sender
 
@@ -18,7 +18,7 @@ A car’s fuel sender is the unit in the fuel tank that tells the car the fuel l
 
 Given the oddities of my car, it is highly likely your fuel sender will NOT read the same way as mine.
 
-Below are the critical two lines, at the start of [`src/main.cpp`](src/main.cpp). You will need to get these resistance readings from your own car. Disconnect the fuel sender from the car and measure it when the tank is empty and full, either using a multimeter or using your module (better, see below).
+Below are the critical two lines, at the start of [`src/main.cpp`](http://src/main.cpp). You will need to get these resistance readings from your own car. Disconnect the fuel sender from the car and measure it when the tank is empty and full, either using a multimeter or using your module (better, see below).
 
 You can try just guessing and see if the needle goes to the right place, but obviously measuring is better. If the fuel is at a known level and you measure the resistance, you can guess that the sender will be linear and calculate the top & bottom, but measuring is better. If you have a normal tank mounted at a normal angle (flat), then it’s likely your float can free travel through its full range. Mine can’t.
 
@@ -43,9 +43,18 @@ A “normal” 0–200 Ω sender (empty \= low resistance) is widespread, but yo
 
 The code doesn’t mind if yours goes forward or reverse. Mine actually works forward (0-200), but had to be fitted upside down, so actually goes in reverse & the odd shape of my tank means the float can’t travel its full distance. Hence building this.
 
+### Connecting to the Fuel Sender
+
+To get any reading from the fuel sender, you will need to connect a GPIO on the module to the fuel sender’s signal terminal, as per the wiring diagram below. You will also need to connect the module's ground to the car’s ground. It is **highly** recommended you do this as close to the fuel sender as possible, preferably using a ground connection that is not being used by anything else.
+
+If your sender doesn’t have a ground terminal, one of the bolts holding your tank in place is a good second best choice, but use one that isn’t being used to ground the tank itself.
+
+It is also **highly** recommended you use a twisted-pair cable to run the signal & ground from the tank/sender to the module. This keeps the signal more stable. If you don’t have a twisted pair cable, you can easily make one using two ordinary cables, locking them into an electric screw driver or drill, then spinning them slowly. If you do this, bear in mind the twisting will cause you to lose some length, so allow for this. Over the length of a car, this can be about 8 to 10 inches extra needed.
+Optionally, you can use a shielded cable. If you do this ground the shielding to the car's chassis at both ends.
+
 Wiring on this car:
 
-```text
+```
   fuel tank                                                                T-Display-S3 pins
   ---------                                                                -----------------
                              twisted pair (preferably)
@@ -60,7 +69,6 @@ Wiring on this car:
   sender local ground -+----- ground core ---------------------------------+-- GND
 
 ```
-Optionally, you can use a shielded cable. If you do this ground the shield to the car's chassis at both ends.
 
 ### Import Note
 
@@ -74,7 +82,7 @@ The development system is called *PlatformIO*, but if you tell the AI what devic
 
 I used an Ubuntu Desktop PC as my development platform, so all these commands are for an Ubuntu PC. For other environments, please ask AI. There are *PlatformIO* plug-ins for “VS Code”, if you prefer using that.
 
-If you use a different device from me, you may need to change `platform.ini` and the panel set up at the start of [`src/main.cpp`](src/main.cpp). As an AI. Tell it which module I used, and which one you bought, and it will tell you what to change.
+If you use a different device from me, you may need to change `platform.ini` and the panel set up at the start of [`src/main.cpp`](http://src/main.cpp). As an AI. Tell it which module I used, and which one you bought, and it will tell you what to change.
 
 ### Install PlatformIO CLI on Ubuntu
 
@@ -145,8 +153,7 @@ pio run -t upload --upload-port /dev/ttyACM0
 - The board should reset and the upload progress will appear.  
 - When it says `SUCCESS` the code is running on the device.
 
-
-If you edit the [`src/main.cpp`](src/main.cpp) file, or change the background images, then just run this command again to rebuild the code & send it to the device.
+If you edit the [`src/main.cpp`](http://src/main.cpp) file, or change the background images, then just run this command again to rebuild the code & send it to the device.
 
 ### Useful extra commands
 
@@ -184,7 +191,7 @@ The lights feed is about 12-14.7 V, and it is only live when the ignition is on.
 - 10k from GPIO2 to GND
 - 100 nF capacitor across the 10k (GPIO2 to GND)
 
-```text
+```
   car lights +12 V                                      T-Display-S3 pins
   live only when the lights are on                      -----------------
   about 12-14.7 V
@@ -199,13 +206,11 @@ The lights feed is about 12-14.7 V, and it is only live when the ignition is on.
                                across the 10k       |
                                                     +-- GND
 
-  Never connect 12 V directly to a GPIO.
-  Set LIGHTS_GPIO_PIN = 2
 ```
 
-GPIO2 then sees about 2.1 V at 12 V, about 2.6 V at 14.7 V, and 0 V when the lights are off. About 2.1 V is borderline for a digital HIGH, so the firmware reads the pin with `analogReadMilliVolts()`. The pin is left as `INPUT` with no internal pull-up; the 10k to GND is the pulldown.
+GPIO2 will see about 2.1 V at 12 V, about 2.6 V at 14.7 V, and 0 V when the lights are off. About 2.1 V is borderline for a digital HIGH, so the firmware reads the pin with `analogReadMilliVolts()`. The pin is left as `INPUT` with no internal pull-up; the 10k to GND is the pulldown.
 
-Once the divider is fitted, set this in [`src/main.cpp`](src/main.cpp):
+Once the divider is fitted, set this in [`src/main.cpp`](http://src/main.cpp):
 
 ```c
 const int LIGHTS_GPIO_PIN = 2;
@@ -221,7 +226,7 @@ The thresholds and the fade sit with the other tweakable constants at the top of
 | `BRIGHTNESS_LIGHTS_ON` | 80 | Backlight with the lights on |
 | `LIGHTS_ON_MV` | 1600 | Lights count as on above this (millivolts) |
 | `LIGHTS_OFF_MV` | 1200 | Lights count as off below this (millivolts) |
-| `STABLE_LOOPS` | 4 | Consecutive loops the new state must hold (~250 ms each, so ~1 s) |
+| `STABLE_LOOPS` | 4 | Consecutive loops the new state must hold (\~250 ms each, so \~1 s) |
 | `FADE_MS` | 1000 | How long the backlight takes to fade between the two levels |
 
 A reading between the two thresholds keeps the previous state, so a small change in voltage does not flicker the backlight. The gauge starts up assuming the lights are off.
