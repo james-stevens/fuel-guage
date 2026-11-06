@@ -150,8 +150,9 @@ bool        avgFilled = false;
 
 float readFuelOhms()
 {
-	int raw = analogRead(ADC_PIN);
-	float v = (raw / 4095.0f) * VCC;
+	// int raw = analogRead(ADC_PIN);
+	float v = analogReadMilliVolts(ADC_PIN) / 1000.0f;
+	// float v = (raw / 4095.0f) * VCC;
 	if (v < 0.01f) return 0;
 	float r = SERIES_R * (v / (VCC - v));
 	return r;
