@@ -9,6 +9,10 @@
 const int DEBUG_WIRING = 0;
 
 //-------------------------------------------------------------
+// KEY button toggles the debug screen. 0 is the BOOT button.
+const int DEBUG_BUTTON_PIN = 14;
+
+//-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
 //-------------------------------------------------------------
 const float EMPTY_OHMS = 167.0f;
@@ -141,19 +145,33 @@ const int   ADC_PIN = 1;
 const float SERIES_R = 330.0f;
 const float VCC = 3.3f;
 
-// Simple moving average
-float       avgBuf[SENDER_AVG_SAMPLES];
-int         avgIdx = 0;
-bool        avgFilled = false;
+// One sample per loop. readFuelOhms() fills the sender fields.
+struct Readings {
+	float senderVolts;
+	float senderOhms;
+	float avgOhms;
+	int lightsMv;
+	int angle;
+};
+
+Readings readings;
+int lastAngle = -999;
+bool debugScreen = false;
+bool debugButtonDown = false;
+char debugShown[4][24];
 
 
 
 float readFuelOhms()
 {
-	float v = analogReadMilliVolts(ADC_PIN) / 1000.0f;
-	if (v < 0.01f) return 0;
-	float r = SERIES_R * (v / (VCC - v));
-	return r;
+	// Factory calibration. raw/4095*VCC reads about 80 mV low.
+	readings.senderVolts = analogReadMilliVolts(ADC_PIN) / 1000.0f;
+	if (readings.senderVolts < 0.01f) {
+		readings.senderOhms = 0;
+		return 0;
+		}
+	readings.senderOhms = SERIES_R * (readings.senderVolts / (VCC - readings.senderVolts));
+	return readings.senderOhms;
 }
 
 
@@ -174,9 +192,17 @@ float raw = readFuelOhms();
 	for (int i = 0; i < n; i++) sum += buf[i];
 	float ohms = sum / n;
 
-	if (FAKE_CAR_READING > 0.01) return FAKE_CAR_READING;
+	if (FAKE_CAR_READING > 0.01) {
+		readings.avgOhms = FAKE_CAR_READING;
+		return FAKE_CAR_READING;
+		}
 
-	if ((ohms < MIN_OHMS)||(ohms > MAX_OHMS)) return ERROR_OHMS;
+	if ((ohms < MIN_OHMS)||(ohms > MAX_OHMS)) {
+		readings.avgOhms = ERROR_OHMS;
+		return ERROR_OHMS;
+		}
+
+	readings.avgOhms = ohms;
 	return ohms;
 }
 
@@ -267,6 +293,8 @@ void setup()
 	analogReadResolution(12);
 	pinMode(ADC_PIN, INPUT);
 	if (LIGHTS_GPIO_PIN) pinMode(LIGHTS_GPIO_PIN, INPUT);
+	pinMode(DEBUG_BUTTON_PIN, INPUT_PULLUP);
+	debugButtonDown = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
 
 	tft.init();
 	tft.setRotation(3);
@@ -285,27 +313,6 @@ void setup()
 	if (WITH_START_UP_ANIMATION) startupSweep();   // play the animation
 
 	setCpuFrequencyMhz(80);   // drop from 240 MHz to 80 MHz — plenty for a gauge
-}
-
-
-
-void debug_wiring()
-{
-	static int id=0;
-	int raw = analogRead(ADC_PIN);
-	float volts = raw * 3.3f / 4095.0f;
-	float ohms = readFuelOhms();
-	float calVolts = analogReadMilliVolts(ADC_PIN) / 1000.0f;
-	float calOhms = (calVolts < 0.01f) ? 0 : SERIES_R * (calVolts / (VCC - calVolts));
-
-	Serial.printf("%03d: Sender raw=%d  volts=%.2f  ohms=%.1f  calVolts=%.3f  calOhms=%.1f",
-		id++, raw, volts, ohms, calVolts, calOhms);
-	if (LIGHTS_GPIO_PIN) {
-		int mv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
-		Serial.printf(",  Lights millivolts=%d\n",mv);
-	} else {
-		Serial.printf("\n");
-	}
 }
 
 
@@ -337,7 +344,7 @@ void check_lights()
 static bool lightsOn = false;
 static int stableCount = 0;
 static int brightness = BRIGHTNESS_LIGHTS_OFF;
-int mv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
+int mv = readings.lightsMv;
 bool seen = lightsOn;
 int target;
 
@@ -362,19 +369,119 @@ int target;
 
 
 
+void drawDebugFrame()
+{
+	tft.fillScreen(TFT_BLACK);
+	tft.drawFastVLine(160, 0, 170, TFT_DARKGREY);
+	tft.drawFastHLine(0, 85, 320, TFT_DARKGREY);
+
+	tft.setFont(&fonts::FreeSansBold9pt7b);
+	tft.setTextDatum(textdatum_t::top_center);
+	tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+	tft.setTextPadding(0);
+	tft.drawString("Sender volts", 80, 4);
+	tft.drawString("Sender ohms", 240, 4);
+	tft.drawString("Filtered ohms", 80, 89);
+	tft.drawString("Lights mV", 240, 89);
+
+	debugShown[0][0] = 0;
+	debugShown[1][0] = 0;
+	debugShown[2][0] = 0;
+	debugShown[3][0] = 0;
+}
+
+
+
+void drawDebugValue(int index, const char *text)
+{
+int col = index & 1;
+int row = index >> 1;
+int x = col*160 + 80;
+int y = row*85 + 42;
+
+	if (!strcmp(debugShown[index], text)) return;
+
+	strncpy(debugShown[index], text, sizeof(debugShown[index]) - 1);
+	debugShown[index][sizeof(debugShown[index]) - 1] = 0;
+
+	// Keep the refresh inside the cell, clear of the label and the dividers
+	tft.setClipRect(col*160 + 2, row*85 + 24, 156, 59);
+	tft.drawString(text, x, y);
+	tft.clearClipRect();
+}
+
+
+
+void drawDebugValues()
+{
+char buf[24];
+
+	tft.setFont(&fonts::FreeSansBold18pt7b);
+	tft.setTextDatum(textdatum_t::middle_center);
+	tft.setTextColor(TFT_WHITE, TFT_BLACK);
+	tft.setTextPadding(156);
+
+	snprintf(buf, sizeof(buf), "%.3f", readings.senderVolts);
+	drawDebugValue(0, buf);
+	snprintf(buf, sizeof(buf), "%.1f", readings.senderOhms);
+	drawDebugValue(1, buf);
+	if (readings.avgOhms == ERROR_OHMS) snprintf(buf, sizeof(buf), "ERR");
+	else snprintf(buf, sizeof(buf), "%.1f", readings.avgOhms);
+	drawDebugValue(2, buf);
+	if (LIGHTS_GPIO_PIN) snprintf(buf, sizeof(buf), "%d", readings.lightsMv);
+	else snprintf(buf, sizeof(buf), "n/a");
+	drawDebugValue(3, buf);
+}
+
+
+
+void debug_wiring()
+{
+static int id=0;
+
+	Serial.printf("%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f",id++, readings.senderVolts, readings.senderOhms, readings.avgOhms);
+	if (LIGHTS_GPIO_PIN) {
+		Serial.printf(",  Lights millivolts=%d\n", readings.lightsMv);
+	} else {
+		Serial.printf("\n");
+	}
+}
+
+
+
 void loop()
 {
-	static int lastAngle = -999;
-	int angle = ohmsToAngle(filteredOhms());
+bool down;
+
+	readings.angle = ohmsToAngle(filteredOhms());
+	if (LIGHTS_GPIO_PIN) readings.lightsMv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
 
 	if (DEBUG_WIRING) debug_wiring();
 
-	// Only update the display if the needle has moved at least 1°
-	if (abs(angle - lastAngle) >= 2) {
+	// Press edge. The 150 ms loop delay is enough debounce.
+	down = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
+	if (down && !debugButtonDown) {
+		debugScreen = !debugScreen;
+		if (debugScreen) {
+			setCpuFrequencyMhz(240);
+			drawDebugFrame();
+			}
+		else {
+			lastAngle = -999;
+			}
+		}
+	debugButtonDown = down;
+
+	if (debugScreen) {
 		setCpuFrequencyMhz(240);
-		tft.pushImage(0, 0, 320, 170, ((angle < TANK_LOW_WARNING_ANGLE)?light_on_small:light_off_small));
-		needle.pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
-		lastAngle = angle;
+		drawDebugValues();
+		}
+	else if (abs(readings.angle - lastAngle) >= 2) {
+		// Only update the display if the needle has moved at least 1°
+		setCpuFrequencyMhz(240);
+		tft.pushImage(0, 0, 320, 170, ((readings.angle < TANK_LOW_WARNING_ANGLE)?light_on_small:light_off_small));
+		needle.pushRotateZoom(160, 60 + 180, readings.angle, 1.0f, 1.0f, TFT_TRANSPARENT);
+		lastAngle = readings.angle;
 		}
 
 	if (LIGHTS_GPIO_PIN) check_lights();
