@@ -72,7 +72,7 @@ Wiring on this car:
 
 ### Import Note
 
-It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings, to put into the code, is to press the board’s KEY button (GPIO14). That toggles a debug screen with the sender raw count, volts, ohms, and the lights reading in millivolts. Press the button again to return to the gauge. You can also set `DEBUG_WIRING` to `1` at the top of [`src/main.cpp`](http://src/main.cpp) and read the same values on the serial port (see below). Take those readings using as much of the same wiring you plan to use when the gauge is properly installed.
+It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings, to put into the code, is to press the board’s KEY button (GPIO14). That toggles a debug screen with sender volts, sender ohms, filtered ohms, and the lights reading in millivolts. Press the button again to return to the gauge. You can also set `DEBUG_WIRING` to `1` at the top of [`src/main.cpp`](http://src/main.cpp) and read the same values on the serial port (see below). Take those readings using as much of the same wiring you plan to use when the gauge is properly installed.
 
 The module will not be 100% accurate and the wiring in the car will affect the reading. So wiring the module to the car in the way you intend, then taking an “Empty” and “Full” from the car, is the best way to ensure your fuel gauge is as accurate as possible.
 

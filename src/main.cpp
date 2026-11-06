@@ -147,7 +147,6 @@ const float VCC = 3.3f;
 
 // One sample per loop. readFuelOhms() fills the sender fields.
 struct Readings {
-	int senderRaw;
 	float senderVolts;
 	float senderOhms;
 	float avgOhms;
@@ -165,7 +164,6 @@ char debugShown[4][24];
 
 float readFuelOhms()
 {
-	readings.senderRaw = analogRead(ADC_PIN);
 	// Factory calibration. raw/4095*VCC reads about 80 mV low.
 	readings.senderVolts = analogReadMilliVolts(ADC_PIN) / 1000.0f;
 	if (readings.senderVolts < 0.01f) {
@@ -381,9 +379,9 @@ void drawDebugFrame()
 	tft.setTextDatum(textdatum_t::top_center);
 	tft.setTextColor(TFT_YELLOW, TFT_BLACK);
 	tft.setTextPadding(0);
-	tft.drawString("Sender raw", 80, 4);
-	tft.drawString("Sender volts", 240, 4);
-	tft.drawString("Sender ohms", 80, 89);
+	tft.drawString("Sender volts", 80, 4);
+	tft.drawString("Sender ohms", 240, 4);
+	tft.drawString("Filtered ohms", 80, 89);
 	tft.drawString("Lights mV", 240, 89);
 
 	debugShown[0][0] = 0;
@@ -423,11 +421,12 @@ char buf[24];
 	tft.setTextColor(TFT_WHITE, TFT_BLACK);
 	tft.setTextPadding(156);
 
-	snprintf(buf, sizeof(buf), "%d", readings.senderRaw);
+	snprintf(buf, sizeof(buf), "%.3f", readings.senderVolts);
 	drawDebugValue(0, buf);
-	snprintf(buf, sizeof(buf), "%.2f", readings.senderVolts);
-	drawDebugValue(1, buf);
 	snprintf(buf, sizeof(buf), "%.1f", readings.senderOhms);
+	drawDebugValue(1, buf);
+	if (readings.avgOhms == ERROR_OHMS) snprintf(buf, sizeof(buf), "ERR");
+	else snprintf(buf, sizeof(buf), "%.1f", readings.avgOhms);
 	drawDebugValue(2, buf);
 	if (LIGHTS_GPIO_PIN) snprintf(buf, sizeof(buf), "%d", readings.lightsMv);
 	else snprintf(buf, sizeof(buf), "n/a");
@@ -440,7 +439,7 @@ void debug_wiring()
 {
 static int id=0;
 
-	Serial.printf("%03d: Sender raw=%d  volts=%.3f  ohms=%.1f  filteredOhms=%.1f",id++, readings.senderRaw, readings.senderVolts, readings.senderOhms, readings.avgOhms);
+	Serial.printf("%03d: Sender volts=%.3f  ohms=%.1f  filteredOhms=%.1f",id++, readings.senderVolts, readings.senderOhms, readings.avgOhms);
 	if (LIGHTS_GPIO_PIN) {
 		Serial.printf(",  Lights millivolts=%d\n", readings.lightsMv);
 	} else {
