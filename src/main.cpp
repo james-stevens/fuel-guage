@@ -4,6 +4,11 @@
 #include <LovyanGFX.hpp>
 
 //-------------------------------------------------------------
+// This switches on/off `monitor` messages in the `Serial` port
+// set of `0` for prodution, `1` for debugging
+const int DEBUG_WIRING = 0;
+
+//-------------------------------------------------------------
 // KEY button toggles the debug screen. 0 is the BOOT button.
 const int DEBUG_BUTTON_PIN = 14;
 
@@ -431,12 +436,28 @@ char buf[24];
 
 
 
+void debug_wiring()
+{
+static int id=0;
+
+	Serial.printf("%03d: Sender raw=%d  volts=%.3f  ohms=%.1f  filteredOhms=%.1f",id++, readings.senderRaw, readings.senderVolts, readings.senderOhms, readings.avgOhms);
+	if (LIGHTS_GPIO_PIN) {
+		Serial.printf(",  Lights millivolts=%d\n", readings.lightsMv);
+	} else {
+		Serial.printf("\n");
+	}
+}
+
+
+
 void loop()
 {
 bool down;
 
 	readings.angle = ohmsToAngle(filteredOhms());
 	if (LIGHTS_GPIO_PIN) readings.lightsMv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
+
+	if (DEBUG_WIRING) debug_wiring();
 
 	// Press edge. The 150 ms loop delay is enough debounce.
 	down = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
