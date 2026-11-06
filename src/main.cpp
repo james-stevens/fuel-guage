@@ -161,7 +161,8 @@ char debugShown[4][24];
 float readFuelOhms()
 {
 	readings.senderRaw = analogRead(ADC_PIN);
-	readings.senderVolts = (readings.senderRaw / 4095.0f) * VCC;
+	// Factory calibration. raw/4095*VCC reads about 80 mV low.
+	readings.senderVolts = analogReadMilliVolts(ADC_PIN) / 1000.0f;
 	if (readings.senderVolts < 0.01f) {
 		readings.senderOhms = 0;
 		return 0;
