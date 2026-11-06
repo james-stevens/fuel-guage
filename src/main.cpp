@@ -6,7 +6,7 @@
 //-------------------------------------------------------------
 // This switches on/off `monitor` messages in the `Serial` port
 // set of `0` for prodution, `1` for debugging
-const int DEBUG_WIRING = 0;
+const int DEBUG_WIRING = 1;
 
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
@@ -296,8 +296,11 @@ void debug_wiring()
 	int raw = analogRead(ADC_PIN);
 	float volts = raw * 3.3f / 4095.0f;
 	float ohms = readFuelOhms();
+	float calVolts = analogReadMilliVolts(ADC_PIN) / 1000.0f;
+	float calOhms = (calVolts < 0.01f) ? 0 : SERIES_R * (calVolts / (VCC - calVolts));
 
-	Serial.printf("%03d: Sender raw=%d  volts=%.2f  ohms=%.1f",id++, raw, volts, ohms);
+	Serial.printf("%03d: Sender raw=%d  volts=%.2f  ohms=%.1f  calVolts=%.3f  calOhms=%.1f",
+		id++, raw, volts, ohms, calVolts, calOhms);
 	if (LIGHTS_GPIO_PIN) {
 		int mv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
 		Serial.printf(",  Lights millivolts=%d\n",mv);
