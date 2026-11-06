@@ -439,7 +439,7 @@ void debug_wiring()
 {
 static int id=0;
 
-	Serial.printf("%03d: Sender volts=%.3f  ohms=%.1f  filteredOhms=%.1f  calVolts=%.3f  calOhms=%.1f",id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.senderVolts, readings.senderOhms);
+	Serial.printf("%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f",id++, readings.senderVolts, readings.senderOhms, readings.avgOhms);
 	if (LIGHTS_GPIO_PIN) {
 		Serial.printf(",  Lights millivolts=%d\n", readings.lightsMv);
 	} else {
