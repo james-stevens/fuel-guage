@@ -72,7 +72,7 @@ Wiring on this car:
 
 ### Import Note
 
-It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings, to put into the code, is to uncomment the `debug_sender();` line in `loop()` and use `pio device monitor` (see below) to see the real readings coming from your car, using as much of the same wiring you plan to use when the gauge is properly installed.
+It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings, to put into the code, is to press the board’s KEY button (GPIO14). That toggles a debug screen with the sender raw count, volts, ohms, and the lights reading in millivolts. Press the button again to return to the gauge. Take those readings using as much of the same wiring you plan to use when the gauge is properly installed.
 
 The module will not be 100% accurate and the wiring in the car will affect the reading. So wiring the module to the car in the way you intend, then taking an “Empty” and “Full” from the car, is the best way to ensure your fuel gauge is as accurate as possible.
 
@@ -165,7 +165,7 @@ If you edit the [`src/main.cpp`](http://src/main.cpp) file, or change the backgr
 | `pio run -t clean` | Clean build files if something gets stuck |
 | `pio pkg update` | Update libraries |
 
-If you want to debug your code you can send a `printf()` to the serial port with `Serial.printf()` then view the output using
+Sender readings are on the debug screen (KEY button, GPIO14), not printed to the serial port. If you want to debug your code you can send a `printf()` to the serial port with `Serial.printf()` then view the output using
 
 ```sh
 pio device monitor --port /dev/ttyACM0 --baud 115200
