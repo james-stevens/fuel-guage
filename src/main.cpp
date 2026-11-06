@@ -11,7 +11,7 @@ const int DEBUG_WIRING = 1;
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
 //-------------------------------------------------------------
-const float EMPTY_OHMS = 150.0f;
+const float EMPTY_OHMS = 167.0f;
 const float FULL_OHMS  = 29.0f;
 // if outside the range above, by this amount, indicate an error
 // i.e. light the warning light and put the needle below "E"
@@ -150,9 +150,7 @@ bool        avgFilled = false;
 
 float readFuelOhms()
 {
-	// int raw = analogRead(ADC_PIN);
 	float v = analogReadMilliVolts(ADC_PIN) / 1000.0f;
-	// float v = (raw / 4095.0f) * VCC;
 	if (v < 0.01f) return 0;
 	float r = SERIES_R * (v / (VCC - v));
 	return r;
