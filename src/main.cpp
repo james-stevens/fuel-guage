@@ -15,7 +15,7 @@ const int DEBUG_BUTTON_PIN = 14;
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
 //-------------------------------------------------------------
-const float EMPTY_OHMS = 150.0f;
+const float EMPTY_OHMS = 167.0f;
 const float FULL_OHMS  = 29.0f;
 // if outside the range above, by this amount, indicate an error
 // i.e. light the warning light and put the needle below "E"
@@ -129,7 +129,7 @@ LGFX_Sprite needle(&tft);
 // These numbers are tied to the background image
 const int EMPTY_ANGLE = 315;
 const int FULL_ANGLE  = 402;
-const int ERROR_ANGLE = 310;
+const int ERROR_ANGLE = 305;
 
 const int MIN_ANGLE = min(EMPTY_ANGLE, FULL_ANGLE);
 const int MAX_ANGLE = max(EMPTY_ANGLE, FULL_ANGLE);
@@ -439,7 +439,7 @@ void debug_wiring()
 {
 static int id=0;
 
-	Serial.printf("%03d: Sender volts=%.3f  ohms=%.1f  filteredOhms=%.1f",id++, readings.senderVolts, readings.senderOhms, readings.avgOhms);
+	Serial.printf("%03d: Sender volts=%.3f  ohms=%.1f  filteredOhms=%.1f  calVolts=%.3f  calOhms=%.1f",id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.senderVolts, readings.senderOhms);
 	if (LIGHTS_GPIO_PIN) {
 		Serial.printf(",  Lights millivolts=%d\n", readings.lightsMv);
 	} else {
