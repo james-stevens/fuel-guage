@@ -11,7 +11,7 @@ const int DEBUG_WIRING = 0;
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
 //-------------------------------------------------------------
-const float EMPTY_OHMS = 150.0f;
+const float EMPTY_OHMS = 167.0f;
 const float FULL_OHMS  = 29.0f;
 // if outside the range above, by this amount, indicate an error
 // i.e. light the warning light and put the needle below "E"
@@ -125,7 +125,7 @@ LGFX_Sprite needle(&tft);
 // These numbers are tied to the background image
 const int EMPTY_ANGLE = 315;
 const int FULL_ANGLE  = 402;
-const int ERROR_ANGLE = 310;
+const int ERROR_ANGLE = 305;
 
 const int MIN_ANGLE = min(EMPTY_ANGLE, FULL_ANGLE);
 const int MAX_ANGLE = max(EMPTY_ANGLE, FULL_ANGLE);
@@ -150,8 +150,7 @@ bool        avgFilled = false;
 
 float readFuelOhms()
 {
-	int raw = analogRead(ADC_PIN);
-	float v = (raw / 4095.0f) * VCC;
+	float v = analogReadMilliVolts(ADC_PIN) / 1000.0f;
 	if (v < 0.01f) return 0;
 	float r = SERIES_R * (v / (VCC - v));
 	return r;
@@ -296,8 +295,11 @@ void debug_wiring()
 	int raw = analogRead(ADC_PIN);
 	float volts = raw * 3.3f / 4095.0f;
 	float ohms = readFuelOhms();
+	float calVolts = analogReadMilliVolts(ADC_PIN) / 1000.0f;
+	float calOhms = (calVolts < 0.01f) ? 0 : SERIES_R * (calVolts / (VCC - calVolts));
 
-	Serial.printf("%03d: Sender raw=%d  volts=%.2f  ohms=%.1f",id++, raw, volts, ohms);
+	Serial.printf("%03d: Sender raw=%d  volts=%.2f  ohms=%.1f  calVolts=%.3f  calOhms=%.1f",
+		id++, raw, volts, ohms, calVolts, calOhms);
 	if (LIGHTS_GPIO_PIN) {
 		int mv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
 		Serial.printf(",  Lights millivolts=%d\n",mv);
