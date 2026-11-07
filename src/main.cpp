@@ -379,10 +379,10 @@ void drawDebugFrame()
 	tft.setTextDatum(textdatum_t::top_center);
 	tft.setTextColor(TFT_YELLOW, TFT_BLACK);
 	tft.setTextPadding(0);
-	tft.drawString("Sender volts", 80, 4);
-	tft.drawString("Sender ohms", 240, 4);
-	tft.drawString("Filtered ohms", 80, 95);
-	tft.drawString("Lights mV", 240, 95);
+	tft.drawString("Sender volts", 80, 16);
+	tft.drawString("Sender ohms", 240, 16);
+	tft.drawString("Filtered ohms", 80, 101);
+	tft.drawString("Lights mV", 240, 101);
 
 	debugShown[0][0] = 0;
 	debugShown[1][0] = 0;
@@ -397,8 +397,7 @@ void drawDebugValue(int index, const char *text)
 int col = index & 1;
 int row = index >> 1;
 int x = col*160 + 80;
-int y = row*85 + 42;
-	if (row) y += 6;
+int y = row*85 + 54;
 
 	if (!strcmp(debugShown[index], text)) return;
 
