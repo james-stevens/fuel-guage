@@ -18,12 +18,12 @@ A car’s fuel sender is the unit in the fuel tank that tells the car the fuel l
 
 Given the oddities of my car, it is highly likely your fuel sender will NOT read the same way as mine.
 
-Below are the critical two lines, at the start of [`src/main.cpp`](http://src/main.cpp). You will need to get these resistance readings from your own car. Disconnect the fuel sender from the car and measure it when the tank is empty and full, either using a multimeter or using your module (better, see below).
+Below are the critical two lines, at the start of [`src/main.cpp`](http://src/main.cpp). You will need these two resistance readings from your own car. Measure them on the debug screen with the gauge installed, as described in [Calibration](#calibration).
 
 You can try just guessing and see if the needle goes to the right place, but obviously measuring is better. If the fuel is at a known level and you measure the resistance, you can guess that the sender will be linear and calculate the top & bottom, but measuring is better. If you have a normal tank mounted at a normal angle (flat), then it’s likely your float can free travel through its full range. Mine can’t.
 
 ```c
-const float EMPTY_OHMS = 150.0f;
+const float EMPTY_OHMS = 167.0f;
 const float FULL_OHMS  = 29.0f;
 ```
 
@@ -70,11 +70,89 @@ Wiring on this car:
 
 ```
 
-### Import Note
+## Debug screen
 
-It is **highly unlikely** that your module and your multimeter will give the same resistance readings from your fuel sender. Roughly the same, but not exactly the same. So the best way to get good “Empty” and “Full” readings, to put into the code, is to press the board’s KEY button (GPIO14). That toggles a debug screen with sender volts, sender ohms, filtered ohms, and the lights reading in millivolts. Press the button again to return to the gauge. You can also set `DEBUG_WIRING` to `1` at the top of [`src/main.cpp`](http://src/main.cpp) and read the same values on the serial port (see below). Take those readings using as much of the same wiring you plan to use when the gauge is properly installed.
+Press the board's KEY button (GPIO14) to show the debug screen. Press it again to return to the gauge.
 
-The module will not be 100% accurate and the wiring in the car will affect the reading. So wiring the module to the car in the way you intend, then taking an “Empty” and “Full” from the car, is the best way to ensure your fuel gauge is as accurate as possible.
+The screen is a 2×2 grid. The cells refresh about every 150 ms.
+
+```
+Sender volts     Sender ohms
+Filtered ohms    Lights mV
+```
+
+- **Sender volts** (top left) is the voltage on GPIO1, the ADC on the sender side of the 330 Ω resistor. One sample, shown to three decimal places.
+- **Sender ohms** (top right) is that sample converted to ohms with `330 * V / (3.3 - V)`, to one decimal place. A single sample, so it jitters.
+- **Filtered ohms** (bottom left) is a running average of up to 8 samples (`SENDER_AVG_SAMPLES`). The needle follows this number, shown to one decimal place. Out of range, the cell shows `ERR`.
+- **Lights mV** (bottom right) is the lights-input voltage in millivolts, from `LIGHTS_GPIO_PIN` (16 in this file). When `LIGHTS_GPIO_PIN` is 0 the cell shows `n/a`.
+
+`ERR` means the filtered reading is more than `ERROR_GAP_OHMS` (10) outside the empty-to-full range. On this car empty is the higher resistance, so an open circuit is above `EMPTY_OHMS + ERROR_GAP_OHMS` (167 + 10 = 177 Ω). A broken wire, or the sender unplugged, reads several thousand ohms and shows `ERR`. The low end is the same gap past the smaller of `EMPTY_OHMS` and `FULL_OHMS` (below 19 Ω with these numbers).
+
+On an open circuit the ADC tops out around 3.1-3.2 V, which is normal, and the ohms figure still runs into the thousands.
+
+Set `DEBUG_WIRING` to `1` at the top of `src/main.cpp` to print the same values on the serial port. The file ships with it set to `0`. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, and `Lights millivolts=...` when the lights pin is enabled. `ERR` on the screen is `filteredOhms=-1.0` in that log. View it with:
+
+```sh
+pio device monitor
+```
+
+The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running.
+
+## Calibration
+
+How to set this gauge up on your own sender. Every resistance below is **Filtered ohms** on the debug screen.
+
+### Wiring
+
+```
+3.3V -> 330 ohm -> GPIO1 (ADC) -> sender -> ground
+```
+
+GPIO1 joins the sender signal on the far side of the 330 Ω resistor. Run a dedicated ground from a board GND pin to the sender or tank ground, for example one core of a twisted pair, with the signal on the other core. An optional 100 nF capacitor from GPIO1 to GND, fitted at the module, reduces ADC jitter. The drawing in [Connecting to the Fuel Sender](#connecting-to-the-fuel-sender) is this circuit.
+
+### Power
+
+Calibrate with the board powered the way it will be in the car, from the car USB supply. Readings can differ between a laptop USB port and the car supply. Use the wiring you will actually install, and put the gauge's Filtered ohms into the code. A multimeter across the sender is only a rough check.
+
+### Bench check
+
+Optional. Fit a known fixed resistor in place of the sender and confirm **Filtered ohms** is within that resistor's tolerance. A 47 Ω 5% resistor here read 46.0.
+
+### Empty and full
+
+1. Drain the tank to empty, or as near empty as you will run it. Read **Filtered ohms** and set `EMPTY_OHMS` to that number.
+2. Fill the tank. Read **Filtered ohms** and set `FULL_OHMS` to that number.
+
+The float can hit its stop, so the last few litres may not change the reading. Use the value on screen once the float is against the stop.
+
+This file has `EMPTY_OHMS` 167 and `FULL_OHMS` 29.
+
+### Angles
+
+The sender is assumed to be roughly linear between empty and full. Needle angle is a straight map from those two resistances onto two angles.
+
+| Constant | Value | What it does |
+| :---- | :---- | :---- |
+| `EMPTY_ANGLE` | 315 | Needle on E at `EMPTY_OHMS` |
+| `FULL_ANGLE` | 402 | Needle on F at `FULL_OHMS` |
+| `ERROR_ANGLE` | 305 | Needle position on `ERR`, below the E mark |
+| `TANK_LOW_WARNING_ANGLE` | 335 | Low-fuel warning while the needle angle is below this |
+
+`ERROR_ANGLE` is below `EMPTY_ANGLE`, so a fault parks the needle under E. That angle is also below `TANK_LOW_WARNING_ANGLE`, so the warning lamp is on. Within `ERROR_GAP_OHMS` (10 Ω) past empty or full, the needle stays on that stop. Past the gap it moves to `ERROR_ANGLE` and the screen shows `ERR`.
+
+`TANK_LOW_WARNING_ANGLE` sits a little above empty. Below 335 the gauge shows the low-fuel face. From 335 to F (402) it shows the normal face. Raise the number to warn sooner. Lower it to warn later.
+
+These four values match the gauge face in this repo. On a new face, put `EMPTY_ANGLE` on the E mark, `FULL_ANGLE` on the F mark, `ERROR_ANGLE` just below E, and `TANK_LOW_WARNING_ANGLE` where the low-fuel lamp should come on.
+
+### Flash
+
+After editing the constants, rebuild and flash:
+
+```sh
+pio run -t upload
+```
+
+Port selection and the rest of the upload steps are in [To Upload the Code](#to-upload-the-code).
 
 ## To Upload the Code
 
@@ -161,23 +239,21 @@ If you edit the [`src/main.cpp`](http://src/main.cpp) file, or change the backgr
 | :---- | :---- |
 | `pio run` | Build only |
 | `pio run -t upload` | Build \+ upload (auto-detects port if only one is present) |
-| `pio device monitor` | Open serial monitor (115200 baud) to see the `Serial.printf` output |
+| `pio device monitor` | Open the serial monitor (115200 baud). See [Debug screen](#debug-screen) |
 | `pio run -t clean` | Clean build files if something gets stuck |
 | `pio pkg update` | Update libraries |
 
-Sender readings are on the debug screen (KEY button, GPIO14). The same readings are printed to the serial port when `DEBUG_WIRING` is `1` (it is `0` by default). Capture that log to a file with
+The KEY button, the four cells, and the `DEBUG_WIRING` log are covered in [Debug screen](#debug-screen). That log is non-blocking: if nothing is reading, lines are dropped and the gauge keeps running. Save it to a file with
 
 ```sh
 pio device monitor -f log2file --port /dev/ttyACM0 --baud 115200
 ```
 
-If you want to debug your code you can send a `printf()` to the serial port with `Serial.printf()` then view the output using
+To watch other `Serial.printf()` output:
 
 ```sh
 pio device monitor --port /dev/ttyACM0 --baud 115200
 ```
-
-NOTE: if there is a lot of output, and you are not running `pio device monitor`, your program might stop running, waiting for you to read the output using this `monitor` command.
 
 ## Powering Your Module
 
