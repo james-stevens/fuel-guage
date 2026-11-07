@@ -381,8 +381,8 @@ void drawDebugFrame()
 	tft.setTextPadding(0);
 	tft.drawString("Sender volts", 80, 4);
 	tft.drawString("Sender ohms", 240, 4);
-	tft.drawString("Filtered ohms", 80, 89);
-	tft.drawString("Lights mV", 240, 89);
+	tft.drawString("Filtered ohms", 80, 95);
+	tft.drawString("Lights mV", 240, 95);
 
 	debugShown[0][0] = 0;
 	debugShown[1][0] = 0;
@@ -398,6 +398,7 @@ int col = index & 1;
 int row = index >> 1;
 int x = col*160 + 80;
 int y = row*85 + 42;
+	if (row) y += 6;
 
 	if (!strcmp(debugShown[index], text)) return;
 
