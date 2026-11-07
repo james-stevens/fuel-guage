@@ -288,6 +288,7 @@ void setup()
 	esp_wifi_stop();          // extra safety
 	esp_bt_controller_disable();
 	Serial.begin(115200);
+	Serial.setTxTimeoutMs(0);
 	setCpuFrequencyMhz(240);
 
 	analogReadResolution(12);
@@ -438,12 +439,16 @@ char buf[24];
 void debug_wiring()
 {
 static int id=0;
+char line[128];
+int len;
 
-	Serial.printf("%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f",id++, readings.senderVolts, readings.senderOhms, readings.avgOhms);
 	if (LIGHTS_GPIO_PIN) {
-		Serial.printf(",  Lights millivolts=%d\n", readings.lightsMv);
+		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Lights millivolts=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.lightsMv);
 	} else {
-		Serial.printf("\n");
+		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms);
+	}
+	if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
+		Serial.write((const uint8_t *)line, (size_t)len);
 	}
 }
 
