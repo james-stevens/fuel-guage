@@ -370,7 +370,7 @@ void loop()
 	if (DEBUG_WIRING) debug_wiring();
 
 	// Only update the display if the needle has moved at least 1°
-	if (abs(angle - lastAngle) >= 2) {
+	if (abs(angle - lastAngle) >= 1) {
 		setCpuFrequencyMhz(240);
 		tft.pushImage(0, 0, 320, 170, ((angle < TANK_LOW_WARNING_ANGLE)?light_on_small:light_off_small));
 		needle.pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
