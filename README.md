@@ -73,6 +73,8 @@ Wiring on this car:
 ## Debug screen
 
 Press the board's KEY button (GPIO14) to show the debug screen. Press it again to return to the gauge.
+With the normal gauge orientation, i.e. landscape with the buttons & USB socket on the left, the KEY button will
+be the bottom button.
 
 The screen is a 2×2 grid. The cells refresh about every 150 ms.
 
