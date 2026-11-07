@@ -476,7 +476,7 @@ bool down;
 		setCpuFrequencyMhz(240);
 		drawDebugValues();
 		}
-	else if (abs(readings.angle - lastAngle) >= 2) {
+	else if (abs(readings.angle - lastAngle) >= 1) {
 		// Only update the display if the needle has moved at least 1°
 		setCpuFrequencyMhz(240);
 		tft.pushImage(0, 0, 320, 170, ((readings.angle < TANK_LOW_WARNING_ANGLE)?light_on_small:light_off_small));
