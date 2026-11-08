@@ -20,6 +20,9 @@ const float FULL_OHMS  = 29.0f;
 // if outside the range above, by this amount, indicate an error
 // i.e. light the warning light and put the needle below "E"
 const float ERROR_GAP_OHMS  = 10.0f;
+// Open circuit reads about 7561 Ω (calibrated ADC tops out near 3.162 V).
+// These readings are not averaged. Three in a row is a cable break.
+const float OPEN_CIRCUIT_OHMS = 7500.0f;
 
 // Set this to a value more than 0.01 to fake a reading from the car's sender
 const float FAKE_CAR_READING = 0.0;
@@ -56,9 +59,9 @@ const int STABLE_LOOPS = 4;
 // set this to zero to disable the start-up animation
 const int WITH_START_UP_ANIMATION = 1;
 
-// number of readings from the sender to average over
-// smooths out the arrow movement to stop jittering
-const int   SENDER_AVG_SAMPLES = 8;
+// readings kept from the sender. The filtered value drops the highest
+// and the lowest, then averages the rest (8 once the buffer is full).
+const int   SENDER_AVG_SAMPLES = 10;
 
 
 class LGFX : public lgfx::LGFX_Device {
@@ -181,23 +184,46 @@ float filteredOhms()
 static float buf[SENDER_AVG_SAMPLES];
 static int idx = 0;
 static bool filled = false;
+static int openStreak = 0;
 float raw = readFuelOhms();
 
-	buf[idx] = raw;
-	idx = (idx + 1) % SENDER_AVG_SAMPLES;
-	if (idx == 0) filled = true;
+	// Open-circuit samples stay out of the average. The first good
+	// reading is filtered with whatever was stored before the break.
+	if (raw >= OPEN_CIRCUIT_OHMS) {
+		if (openStreak < 3) openStreak++;
+		}
+	else {
+		openStreak = 0;
+		buf[idx] = raw;
+		idx = (idx + 1) % SENDER_AVG_SAMPLES;
+		if (idx == 0) filled = true;
+		}
 
 	int n = filled ? SENDER_AVG_SAMPLES : idx;
-	float sum = 0;
-	for (int i = 0; i < n; i++) sum += buf[i];
-	float ohms = sum / n;
+	float ohms = 0;
+	if (n > 0) {
+		float sum = 0;
+		float lo = buf[0];
+		float hi = buf[0];
+		for (int i = 0; i < n; i++) {
+			sum += buf[i];
+			if (buf[i] < lo) lo = buf[i];
+			if (buf[i] > hi) hi = buf[i];
+			}
+		// Plain mean until a high and a low can be dropped. A full
+		// buffer divides by 8.
+		if (n < 3) ohms = sum / n;
+		else ohms = (sum - hi - lo) / (n - 2);
+		}
 
 	if (FAKE_CAR_READING > 0.01) {
 		readings.avgOhms = FAKE_CAR_READING;
 		return FAKE_CAR_READING;
 		}
 
-	if ((ohms < MIN_OHMS)||(ohms > MAX_OHMS)) {
+	// Empty buffer (cable open from power-on), three raw readings on
+	// the ADC rail, or a filtered value outside the sender range.
+	if ((n == 0)||(openStreak >= 3)||(ohms < MIN_OHMS)||(ohms > MAX_OHMS)) {
 		readings.avgOhms = ERROR_OHMS;
 		return ERROR_OHMS;
 		}
