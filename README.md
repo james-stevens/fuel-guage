@@ -147,7 +147,7 @@ Within `ERROR_GAP_OHMS` (10 Ω) past empty or full, the needle stays on that sto
 
 The lamp has a gap so it does not flicker when the needle sits on the threshold. Below 335 it turns on. It stays on through 335, 336 and 337, and turns off only at 338 and above. Raise the on-angle to warn sooner. Lower it to warn later. Keep the off-angle a few degrees higher.
 
-On the startup sweep the lamp follows the needle: on at E, off once the sweep reaches 338, and on again on the way back only if the needle goes below 335. When the sweep finishes, the lamp is reset to the real level. A level in the 335–337 gap leaves the lamp off, because the needle arrived from full. The small bounce below the final angle does not latch the lamp on. With the startup animation disabled (`WITH_START_UP_ANIMATION` set to 0), the first real reading uses the same rule, starting from lamp off.
+The startup sweep keeps the normal face the whole way, including the bounce below the final angle. When the sweep finishes, the lamp is set from the real level with the usual hysteresis and the gauge is redrawn. Below 335 it comes on, including `ERROR_ANGLE`. At 338 and above it stays off. A level in the 335–337 gap leaves it off, because it starts off. With the startup animation disabled (`WITH_START_UP_ANIMATION` set to 0), the first real reading uses the same rule.
 
 These angles match the gauge face in this repo. On a new face, put `EMPTY_ANGLE` on the E mark, `FULL_ANGLE` on the F mark, `ERROR_ANGLE` just below E, and the two lamp angles where the low-fuel warning should come on and go off.
 
