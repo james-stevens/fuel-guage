@@ -85,12 +85,12 @@ Filtered ohms    Lights mV
 
 - **Sender volts** (top left) is the voltage on GPIO1, the ADC on the sender side of the 330 Ω resistor. One sample, shown to three decimal places.
 - **Sender ohms** (top right) is that sample converted to ohms with `330 * V / (3.3 - V)`, to one decimal place. A single sample, so it jitters.
-- **Filtered ohms** (bottom left) is a running average of up to 8 samples (`SENDER_AVG_SAMPLES`). The needle follows this number, shown to one decimal place. Out of range, the cell shows `ERR`.
+- **Filtered ohms** (bottom left) is a trimmed mean of up to 10 samples (`SENDER_AVG_SAMPLES`). The highest and the lowest sample are dropped and the rest are averaged (8 samples once the buffer is full), so one spiked reading does not pull the needle. Until there are three samples it is a plain average of what has been read. The needle follows this number, shown to one decimal place. Out of range, the cell shows `ERR`.
 - **Lights mV** (bottom right) is the lights-input voltage in millivolts, from `LIGHTS_GPIO_PIN` (16 in this file). When `LIGHTS_GPIO_PIN` is 0 the cell shows `n/a`.
 
-`ERR` means the filtered reading is more than `ERROR_GAP_OHMS` (10) outside the empty-to-full range. On this car empty is the higher resistance, so an open circuit is above `EMPTY_OHMS + ERROR_GAP_OHMS` (167 + 10 = 177 Ω). A broken wire, or the sender unplugged, reads several thousand ohms and shows `ERR`. The low end is the same gap past the smaller of `EMPTY_OHMS` and `FULL_OHMS` (below 19 Ω with these numbers).
+`ERR` means the filtered reading is more than `ERROR_GAP_OHMS` (10) outside the empty-to-full range. On this car empty is the higher resistance, so that limit is above `EMPTY_OHMS + ERROR_GAP_OHMS` (167 + 10 = 177 Ω). The low end is the same gap past the smaller of `EMPTY_OHMS` and `FULL_OHMS` (below 19 Ω with these numbers).
 
-On an open circuit the ADC tops out around 3.1-3.2 V, which is normal, and the ohms figure still runs into the thousands.
+A broken wire, or the sender unplugged, is an open circuit. The ADC tops out near 3.162 V, about 7561 Ω, and **Sender ohms** still shows that raw reading. `OPEN_CIRCUIT_OHMS` is set just below it, at 7500. As soon as the last three raw readings are all at or above that, **Filtered ohms** shows `ERR` without waiting for the trimmed mean to climb. Plug the cable back in and the needle leaves the error mark once the filtered reading is back within `ERROR_GAP_OHMS` of the empty-to-full range.
 
 Set `DEBUG_WIRING` to `1` at the top of `src/main.cpp` to print the same values on the serial port. The file ships with it set to `0`. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, and `Lights millivolts=...` when the lights pin is enabled. `ERR` on the screen is `filteredOhms=-1.0` in that log. View it with:
 
@@ -140,7 +140,7 @@ The sender is assumed to be roughly linear between empty and full. Needle angle 
 | `ERROR_ANGLE` | 305 | Needle position on `ERR`, below the E mark |
 | `TANK_LOW_WARNING_ANGLE` | 335 | Low-fuel warning while the needle angle is below this |
 
-`ERROR_ANGLE` is below `EMPTY_ANGLE`, so a fault parks the needle under E. That angle is also below `TANK_LOW_WARNING_ANGLE`, so the warning lamp is on. Within `ERROR_GAP_OHMS` (10 Ω) past empty or full, the needle stays on that stop. Past the gap it moves to `ERROR_ANGLE` and the screen shows `ERR`.
+`ERROR_ANGLE` is below `EMPTY_ANGLE`, so a fault parks the needle under E. That angle is also below `TANK_LOW_WARNING_ANGLE`, so the warning lamp is on. Within `ERROR_GAP_OHMS` (10 Ω) past empty or full, the needle stays on that stop. Past the gap it moves to `ERROR_ANGLE` and the screen shows `ERR`. A cable break does the same as soon as three raw readings are at or above `OPEN_CIRCUIT_OHMS` (7500 Ω).
 
 `TANK_LOW_WARNING_ANGLE` sits a little above empty. Below 335 the gauge shows the low-fuel face. From 335 to F (402) it shows the normal face. Raise the number to warn sooner. Lower it to warn later.
 
