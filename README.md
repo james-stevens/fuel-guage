@@ -106,7 +106,7 @@ Set `LIGHTS_GPIO_PIN` to `0` if nothing is connected. An unconnected pin floats,
 
 The reading has to pass the thresholds for `STABLE_LOOPS` loops in a row (4 × 150 ms, about 0.6 s) before the target brightness changes. Above 1600 mV counts as lights on. Below 1200 mV counts as lights off. A reading in between keeps the previous state, so a small change does not flicker the backlight.
 
-The fade does not stop the gauge. Each loop steps the backlight toward the new level, and a full swing between 250 and 60 takes about a second (`FADE_MS`). Sampling, the needle, the cable-break check, and the debug screen keep running.
+The fade does not stop the gauge. It moves from the current level to the new one over `FADE_MS`, timed with `millis()`, so a slower loop takes bigger steps and the fade still lasts about a second. A change of mind mid-fade starts again from the level already reached. Sampling, the needle, the cable-break check, and the debug screen keep running.
 
 At boot, after the display is initialised and before the startup sweep, the pin is read once with the same 1600 / 1200 mV test. Lights already on start at brightness 60. Lights off, a reading in the gap, or pin 0, start at 250. That first result is stored as the current lights state, so the gauge does not fade on the first loops just because it woke up.
 
@@ -147,7 +147,7 @@ Within `ERROR_GAP_OHMS` (10 Ω) past empty or full, the needle stays on that sto
 
 The lamp has a gap so it does not flicker when the needle sits on the threshold. Below 335 it turns on. It stays on through 335, 336 and 337, and turns off only at 338 and above. Raise the on-angle to warn sooner. Lower it to warn later. Keep the off-angle a few degrees higher.
 
-On the startup sweep the lamp follows the needle: on at E, off once the sweep reaches 338, and on again on the way back only if the needle goes below 335. When the sweep finishes, the lamp is reset to the real level. A level in the 335–337 gap leaves the lamp off, because the needle arrived from full. The small bounce below the final angle does not latch the lamp on. With the startup animation disabled (`WITH_START_UP_ANIMATION` set to 0), the first real reading uses the same rule, starting from lamp off.
+The startup sweep keeps the normal face the whole way, including the bounce below the final angle. When the sweep finishes, the lamp is set from the real level with the usual hysteresis and the gauge is redrawn. Below 335 it comes on, including `ERROR_ANGLE`. At 338 and above it stays off. A level in the 335–337 gap leaves it off, because it starts off. With the startup animation disabled (`WITH_START_UP_ANIMATION` set to 0), the first real reading uses the same rule.
 
 These angles match the gauge face in this repo. On a new face, put `EMPTY_ANGLE` on the E mark, `FULL_ANGLE` on the F mark, `ERROR_ANGLE` just below E, and the two lamp angles where the low-fuel warning should come on and go off.
 
@@ -200,7 +200,7 @@ All of these are in [`src/main.cpp`](src/main.cpp).
 | `LIGHTS_GPIO_PIN` | 16 | Lights-dimmer input. `0` disables it |
 | `BRIGHTNESS_LIGHTS_OFF` | 250 | Backlight with the lights off. 255 glitches this panel; 250 looks the same |
 | `BRIGHTNESS_LIGHTS_ON` | 60 | Backlight with the lights on |
-| `FADE_MS` | 1000 | Length of a full brightness fade. Stepped inside `loop()`, not a blocking delay |
+| `FADE_MS` | 1000 | Length of a full brightness fade, timed with `millis()` inside `loop()`. Not a blocking delay |
 | `LIGHTS_ON_MV` | 1600 | Lights count as on above this (millivolts) |
 | `LIGHTS_OFF_MV` | 1200 | Lights count as off below this (millivolts) |
 | `STABLE_LOOPS` | 4 | Loops in a row the new lights state must hold. Each loop is ~150 ms, so ~0.6 s |

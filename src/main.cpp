@@ -48,8 +48,8 @@ const int LIGHTS_GPIO_PIN = 16;
 // but mine glitched if I used 255 & 250 looks no different
 const int BRIGHTNESS_LIGHTS_OFF = 250;
 const int BRIGHTNESS_LIGHTS_ON = 60;
-// Fade the backlight between those two over about this long.
-// loop() waits 150 ms and steps the fade there, so sampling keeps running.
+// Fade the backlight between those two over this long.
+// Timed with millis() inside loop(), so a slow loop still finishes on time.
 const int FADE_MS = 1000;
 // analogReadMilliVolts() hysteresis on the divider output.
 // Lights ON above LIGHTS_ON_MV, OFF below LIGHTS_OFF_MV, else hold.
@@ -167,6 +167,9 @@ bool lowFuel = false;
 bool lightsOn = false;
 int brightness = BRIGHTNESS_LIGHTS_OFF;
 int targetBrightness = BRIGHTNESS_LIGHTS_OFF;
+int fadeFrom = BRIGHTNESS_LIGHTS_OFF;
+int fadeTo = BRIGHTNESS_LIGHTS_OFF;
+unsigned long fadeStartMs = 0;
 bool debugScreen = false;
 bool debugButtonDown = false;
 char debugShown[4][24];
@@ -266,15 +269,6 @@ void updateLowFuel(int angle)
 }
 
 
-void resetLowFuel(int angle)
-{
-	// Absolute state for the level the sweep settles on.
-	// On below the on-angle, including ERROR_ANGLE. Off from the
-	// on-angle up, including the gap, because the sweep comes down from full.
-	lowFuel = (angle < TANK_LOW_ON_ANGLE);
-}
-
-
 void drawNeedle(int angle)
 {
 	tft.pushImage(0, 0, 320, 170, (lowFuel?light_on_small:light_off_small));
@@ -284,10 +278,10 @@ void drawNeedle(int angle)
 
 void startupSweep() 
 {
-	// sweep from E to F on start up. Lamp follows the needle.
+	// Warning lamp stays off for the whole sweep, including the bounce.
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) {
-		updateLowFuel(a);
-		drawNeedle(a);
+		tft.pushImage(0, 0, 320, 170, light_off_small);
+		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
 		delay(8);
 		if (a&0x1) filteredOhms();
 		}
@@ -296,26 +290,24 @@ void startupSweep()
 	int finalAngle = ohmsToAngle(filteredOhms());
 
 	// Sweep from F to actual level, unless the level is "F"
-	if (finalAngle == FULL_ANGLE) {
-		resetLowFuel(finalAngle);
-		return;
+	if (finalAngle != FULL_ANGLE) {
+		int step = -2;
+		for (int a = FULL_ANGLE; a != finalAngle; a += step) {
+			tft.pushImage(0, 0, 320, 170, light_off_small);
+			needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
+			delay(8);
+			if ((step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle)) break;
+			}
+
+		// End a little below the final position to get a little bounce at the end
+		tft.pushImage(0, 0, 320, 170, light_off_small);
+		needle.pushRotateZoom(160, 60 + 180, finalAngle - 2, 1.0f, 1.0f, TFT_TRANSPARENT);
 		}
 
-	int step = -2;
-	for (int a = FULL_ANGLE; a != finalAngle; a += step) {
-		bool arrived = (step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle);
-		if (arrived) resetLowFuel(finalAngle);
-		else updateLowFuel(a);
-		drawNeedle(a);
-		delay(8);
-		if (arrived) break;
-		}
-
-	// Latch the lamp to the real level. A step can pass the target,
-	// and that must not leave the lamp on. Then end a little below
-	// the final position to get a little bounce at the end.
-	resetLowFuel(finalAngle);
-	drawNeedle(finalAngle - 2);
+	// Sweep is finished. Normal hysteresis, then redraw the real level.
+	// ERROR_ANGLE is below the on-angle, so a fault still lights the lamp.
+	updateLowFuel(finalAngle);
+	drawNeedle(finalAngle);
 }
 
 
@@ -385,9 +377,8 @@ void setup()
 	pinMode(15, OUTPUT); // switch screen on
 	digitalWrite(15, HIGH);
 
-	// Image was stored as 320×170. The sweep starts on E, so match that lamp.
-	if (WITH_START_UP_ANIMATION) resetLowFuel(EMPTY_ANGLE);
-	tft.pushImage(0, 0, 320, 170, (lowFuel?light_on_small:light_off_small));
+	// Image was stored as 320×170. Lamp stays off until the sweep has finished.
+	tft.pushImage(0, 0, 320, 170, light_off_small);
 
 	createNeedle();
 
@@ -401,22 +392,29 @@ void setup()
 
 void fadeBrightness()
 {
-int step;
+unsigned long elapsed;
+long span;
 int next;
 
-	if (brightness == targetBrightness) return;
-
-	// One step per loop(). The loop ends with delay(150), so the full span is ~FADE_MS.
-	step = abs(BRIGHTNESS_LIGHTS_OFF - BRIGHTNESS_LIGHTS_ON) * 150 / FADE_MS;
-	if (step < 1) step = 1;
-
-	if (targetBrightness > brightness) {
-		next = brightness + step;
-		if (next > targetBrightness) next = targetBrightness;
+	if (brightness == targetBrightness) {
+		fadeTo = targetBrightness;
+		return;
 		}
+
+	// A new target, including one that arrives mid-fade, restarts
+	// from the level already reached.
+	if (targetBrightness != fadeTo) {
+		fadeFrom = brightness;
+		fadeTo = targetBrightness;
+		fadeStartMs = millis();
+		}
+
+	// Unsigned subtraction stays correct when millis() wraps.
+	elapsed = millis() - fadeStartMs;
+	if (elapsed >= (unsigned long)FADE_MS) next = fadeTo;
 	else {
-		next = brightness - step;
-		if (next < targetBrightness) next = targetBrightness;
+		span = (long)fadeTo - fadeFrom;
+		next = fadeFrom + (int)(span * (long)elapsed / FADE_MS);
 		}
 
 	if (next == brightness) return;
