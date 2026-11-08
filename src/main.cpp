@@ -28,8 +28,11 @@ const float OPEN_CIRCUIT_OHMS = 7500.0f;
 const float FAKE_CAR_READING = 0.0;
 
 //-------------------------------------------------------------
-// below this angle, light the warning light to indicated low fuel
-const int TANK_LOW_WARNING_ANGLE = 335;  
+// Lamp turns on below TANK_LOW_ON_ANGLE and stays on until the
+// needle reaches TANK_LOW_OFF_ANGLE, so it does not flicker.
+// ERROR_ANGLE is below the on-angle, so a fault still lights it.
+const int TANK_LOW_ON_ANGLE  = 335;
+const int TANK_LOW_OFF_ANGLE = 338;
 
 //-------------------------------------------------------------
 // Set LIGHTS_GPIO_PIN to your GPIO pin number when the lights divider is wired.
@@ -45,14 +48,15 @@ const int LIGHTS_GPIO_PIN = 16;
 // but mine glitched if I used 255 & 250 looks no different
 const int BRIGHTNESS_LIGHTS_OFF = 250;
 const int BRIGHTNESS_LIGHTS_ON = 60;
-// Fade the backlight between those two over about this long
+// Fade the backlight between those two over about this long.
+// loop() waits 150 ms and steps the fade there, so sampling keeps running.
 const int FADE_MS = 1000;
 // analogReadMilliVolts() hysteresis on the divider output.
 // Lights ON above LIGHTS_ON_MV, OFF below LIGHTS_OFF_MV, else hold.
 const int LIGHTS_ON_MV  = 1600;
 const int LIGHTS_OFF_MV = 1200;
 // check_lights() runs every loop (~150 ms). The new state must be
-// seen this many times in a row (~1 s) before the brightness changes.
+// seen this many times in a row (~0.6 s) before the brightness changes.
 const int STABLE_LOOPS = 4;
 
 
@@ -159,6 +163,10 @@ struct Readings {
 
 Readings readings;
 int lastAngle = -999;
+bool lowFuel = false;
+bool lightsOn = false;
+int brightness = BRIGHTNESS_LIGHTS_OFF;
+int targetBrightness = BRIGHTNESS_LIGHTS_OFF;
 bool debugScreen = false;
 bool debugButtonDown = false;
 char debugShown[4][24];
@@ -172,6 +180,11 @@ float readFuelOhms()
 	if (readings.senderVolts < 0.01f) {
 		readings.senderOhms = 0;
 		return 0;
+		}
+	// On the top rail the divider is ~0 and ohms goes negative or infinite.
+	if (readings.senderVolts >= VCC - 0.05f) {
+		readings.senderOhms = 1.0e6f;
+		return readings.senderOhms;
 		}
 	readings.senderOhms = SERIES_R * (readings.senderVolts / (VCC - readings.senderVolts));
 	return readings.senderOhms;
@@ -246,12 +259,35 @@ int ohmsToAngle(float ohms)
 
 
 
+void updateLowFuel(int angle)
+{
+	if (angle < TANK_LOW_ON_ANGLE) lowFuel = true;
+	else if (angle >= TANK_LOW_OFF_ANGLE) lowFuel = false;
+}
+
+
+void resetLowFuel(int angle)
+{
+	// Absolute state for the level the sweep settles on.
+	// On below the on-angle, including ERROR_ANGLE. Off from the
+	// on-angle up, including the gap, because the sweep comes down from full.
+	lowFuel = (angle < TANK_LOW_ON_ANGLE);
+}
+
+
+void drawNeedle(int angle)
+{
+	tft.pushImage(0, 0, 320, 170, (lowFuel?light_on_small:light_off_small));
+	needle.pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
+}
+
+
 void startupSweep() 
 {
-	// sweep from E to F on start up
+	// sweep from E to F on start up. Lamp follows the needle.
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) {
-		tft.pushImage(0, 0, 320, 170, light_off_small);
-		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
+		updateLowFuel(a);
+		drawNeedle(a);
 		delay(8);
 		if (a&0x1) filteredOhms();
 		}
@@ -260,19 +296,26 @@ void startupSweep()
 	int finalAngle = ohmsToAngle(filteredOhms());
 
 	// Sweep from F to actual level, unless the level is "F"
-	if (finalAngle == FULL_ANGLE) return;
+	if (finalAngle == FULL_ANGLE) {
+		resetLowFuel(finalAngle);
+		return;
+		}
 
 	int step = -2;
 	for (int a = FULL_ANGLE; a != finalAngle; a += step) {
-		tft.pushImage(0, 0, 320, 170, light_off_small);
-		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
+		bool arrived = (step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle);
+		if (arrived) resetLowFuel(finalAngle);
+		else updateLowFuel(a);
+		drawNeedle(a);
 		delay(8);
-		if ((step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle)) break;
+		if (arrived) break;
 		}
 
-	// End a little below the final positiion to get a little bounce at the end
-	tft.pushImage(0, 0, 320, 170, light_off_small);
-	needle.pushRotateZoom(160, 60 + 180, finalAngle - 2, 1.0f, 1.0f, TFT_TRANSPARENT);
+	// Latch the lamp to the real level. A step can pass the target,
+	// and that must not leave the lamp on. Then end a little below
+	// the final position to get a little bounce at the end.
+	resetLowFuel(finalAngle);
+	drawNeedle(finalAngle - 2);
 }
 
 
@@ -325,14 +368,26 @@ void setup()
 
 	tft.init();
 	tft.setRotation(3);
-	tft.setBrightness(BRIGHTNESS_LIGHTS_OFF);   // normal day brightness
 	tft.setSwapBytes(true);          // try false if colours are wrong
+
+	// Match the backlight to the lights input before the sweep, using
+	// the same thresholds as check_lights(). Pin 0 leaves the feature off.
+	// lightsOn starts in agreement so the first loops do not fade.
+	if (LIGHTS_GPIO_PIN) {
+		int mv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
+		if (mv > LIGHTS_ON_MV) lightsOn = true;
+		else if (mv < LIGHTS_OFF_MV) lightsOn = false;
+		}
+	brightness = lightsOn?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF;
+	targetBrightness = brightness;
+	tft.setBrightness(brightness);
 
 	pinMode(15, OUTPUT); // switch screen on
 	digitalWrite(15, HIGH);
 
-	// Image was stored as 320×170
-	tft.pushImage(0, 0, 320, 170, light_off_small);
+	// Image was stored as 320×170. The sweep starts on E, so match that lamp.
+	if (WITH_START_UP_ANIMATION) resetLowFuel(EMPTY_ANGLE);
+	tft.pushImage(0, 0, 320, 170, (lowFuel?light_on_small:light_off_small));
 
 	createNeedle();
 
@@ -344,36 +399,38 @@ void setup()
 
 
 
-void fadeBrightness(int from, int to)
+void fadeBrightness()
 {
 int step;
-int levels;
-int stepMs;
+int next;
 
-	if (from == to) return;
+	if (brightness == targetBrightness) return;
 
-	step = (to > from)?1:-1;
-	levels = abs(to - from);
-	stepMs = FADE_MS / levels;
-	if (stepMs < 1) stepMs = 1;
+	// One step per loop(). The loop ends with delay(150), so the full span is ~FADE_MS.
+	step = abs(BRIGHTNESS_LIGHTS_OFF - BRIGHTNESS_LIGHTS_ON) * 150 / FADE_MS;
+	if (step < 1) step = 1;
 
-	for (int i = 0; i < levels; i++) {
-		from += step;
-		tft.setBrightness(from);
-		delay(stepMs);
+	if (targetBrightness > brightness) {
+		next = brightness + step;
+		if (next > targetBrightness) next = targetBrightness;
 		}
+	else {
+		next = brightness - step;
+		if (next < targetBrightness) next = targetBrightness;
+		}
+
+	if (next == brightness) return;
+	brightness = next;
+	tft.setBrightness(brightness);
 }
 
 
 
 void check_lights()
 {
-static bool lightsOn = false;
 static int stableCount = 0;
-static int brightness = BRIGHTNESS_LIGHTS_OFF;
 int mv = readings.lightsMv;
 bool seen = lightsOn;
-int target;
 
 	if (mv > LIGHTS_ON_MV) seen = true;
 	else if (mv < LIGHTS_OFF_MV) seen = false;
@@ -386,10 +443,7 @@ int target;
 	stableCount++;
 	if (stableCount < STABLE_LOOPS) return;
 
-	target = seen?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF;
-	fadeBrightness(brightness, target);
-	brightness = target;
-	tft.setBrightness(target);
+	targetBrightness = seen?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF;
 	lightsOn = seen;
 	stableCount = 0;
 }
@@ -485,6 +539,7 @@ void loop()
 bool down;
 
 	readings.angle = ohmsToAngle(filteredOhms());
+	updateLowFuel(readings.angle);
 	if (LIGHTS_GPIO_PIN) readings.lightsMv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
 
 	if (DEBUG_WIRING) debug_wiring();
@@ -510,12 +565,14 @@ bool down;
 	else if (abs(readings.angle - lastAngle) >= 1) {
 		// Only update the display if the needle has moved at least 1°
 		setCpuFrequencyMhz(240);
-		tft.pushImage(0, 0, 320, 170, ((readings.angle < TANK_LOW_WARNING_ANGLE)?light_on_small:light_off_small));
-		needle.pushRotateZoom(160, 60 + 180, readings.angle, 1.0f, 1.0f, TFT_TRANSPARENT);
+		drawNeedle(readings.angle);
 		lastAngle = readings.angle;
 		}
 
-	if (LIGHTS_GPIO_PIN) check_lights();
+	if (LIGHTS_GPIO_PIN) {
+		check_lights();
+		fadeBrightness();
+		}
 
 	setCpuFrequencyMhz(80);
 	delay(150);
