@@ -1,2 +1,2 @@
 #! /bin/sh
-pio device monitor --port /dev/ttyACM0 --baud 115200
+rm -f platformio-device-monitor-*.log ; pio device monitor -f log2file -f time --port /dev/ttyACM0 --baud 115200
