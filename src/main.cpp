@@ -48,8 +48,8 @@ const int LIGHTS_GPIO_PIN = 16;
 // but mine glitched if I used 255 & 250 looks no different
 const int BRIGHTNESS_LIGHTS_OFF = 250;
 const int BRIGHTNESS_LIGHTS_ON = 60;
-// Fade the backlight between those two over about this long.
-// loop() waits 150 ms and steps the fade there, so sampling keeps running.
+// Fade the backlight between those two over this long.
+// Timed with millis() inside loop(), so a slow loop still finishes on time.
 const int FADE_MS = 1000;
 // analogReadMilliVolts() hysteresis on the divider output.
 // Lights ON above LIGHTS_ON_MV, OFF below LIGHTS_OFF_MV, else hold.
@@ -167,6 +167,9 @@ bool lowFuel = false;
 bool lightsOn = false;
 int brightness = BRIGHTNESS_LIGHTS_OFF;
 int targetBrightness = BRIGHTNESS_LIGHTS_OFF;
+int fadeFrom = BRIGHTNESS_LIGHTS_OFF;
+int fadeTo = BRIGHTNESS_LIGHTS_OFF;
+unsigned long fadeStartMs = 0;
 bool debugScreen = false;
 bool debugButtonDown = false;
 char debugShown[4][24];
@@ -389,22 +392,29 @@ void setup()
 
 void fadeBrightness()
 {
-int step;
+unsigned long elapsed;
+long span;
 int next;
 
-	if (brightness == targetBrightness) return;
-
-	// One step per loop(). The loop ends with delay(150), so the full span is ~FADE_MS.
-	step = abs(BRIGHTNESS_LIGHTS_OFF - BRIGHTNESS_LIGHTS_ON) * 150 / FADE_MS;
-	if (step < 1) step = 1;
-
-	if (targetBrightness > brightness) {
-		next = brightness + step;
-		if (next > targetBrightness) next = targetBrightness;
+	if (brightness == targetBrightness) {
+		fadeTo = targetBrightness;
+		return;
 		}
+
+	// A new target, including one that arrives mid-fade, restarts
+	// from the level already reached.
+	if (targetBrightness != fadeTo) {
+		fadeFrom = brightness;
+		fadeTo = targetBrightness;
+		fadeStartMs = millis();
+		}
+
+	// Unsigned subtraction stays correct when millis() wraps.
+	elapsed = millis() - fadeStartMs;
+	if (elapsed >= (unsigned long)FADE_MS) next = fadeTo;
 	else {
-		next = brightness - step;
-		if (next < targetBrightness) next = targetBrightness;
+		span = (long)fadeTo - fadeFrom;
+		next = fadeFrom + (int)(span * (long)elapsed / FADE_MS);
 		}
 
 	if (next == brightness) return;

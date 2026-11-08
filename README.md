@@ -106,7 +106,7 @@ Set `LIGHTS_GPIO_PIN` to `0` if nothing is connected. An unconnected pin floats,
 
 The reading has to pass the thresholds for `STABLE_LOOPS` loops in a row (4 × 150 ms, about 0.6 s) before the target brightness changes. Above 1600 mV counts as lights on. Below 1200 mV counts as lights off. A reading in between keeps the previous state, so a small change does not flicker the backlight.
 
-The fade does not stop the gauge. Each loop steps the backlight toward the new level, and a full swing between 250 and 60 takes about a second (`FADE_MS`). Sampling, the needle, the cable-break check, and the debug screen keep running.
+The fade does not stop the gauge. It moves from the current level to the new one over `FADE_MS`, timed with `millis()`, so a slower loop takes bigger steps and the fade still lasts about a second. A change of mind mid-fade starts again from the level already reached. Sampling, the needle, the cable-break check, and the debug screen keep running.
 
 At boot, after the display is initialised and before the startup sweep, the pin is read once with the same 1600 / 1200 mV test. Lights already on start at brightness 60. Lights off, a reading in the gap, or pin 0, start at 250. That first result is stored as the current lights state, so the gauge does not fade on the first loops just because it woke up.
 
@@ -200,7 +200,7 @@ All of these are in [`src/main.cpp`](src/main.cpp).
 | `LIGHTS_GPIO_PIN` | 16 | Lights-dimmer input. `0` disables it |
 | `BRIGHTNESS_LIGHTS_OFF` | 250 | Backlight with the lights off. 255 glitches this panel; 250 looks the same |
 | `BRIGHTNESS_LIGHTS_ON` | 60 | Backlight with the lights on |
-| `FADE_MS` | 1000 | Length of a full brightness fade. Stepped inside `loop()`, not a blocking delay |
+| `FADE_MS` | 1000 | Length of a full brightness fade, timed with `millis()` inside `loop()`. Not a blocking delay |
 | `LIGHTS_ON_MV` | 1600 | Lights count as on above this (millivolts) |
 | `LIGHTS_OFF_MV` | 1200 | Lights count as off below this (millivolts) |
 | `STABLE_LOOPS` | 4 | Loops in a row the new lights state must hold. Each loop is ~150 ms, so ~0.6 s |
