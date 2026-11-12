@@ -179,7 +179,7 @@ Filtered ohms    Lights mV
 
 A broken wire, or the sender unplugged, is an open circuit. The ADC tops out near 3.162 V, about 7561 Ω, and **Sender ohms** still shows that raw reading. The rail guard above does not change that normal open-circuit reading. Those readings are left out of the average. `OPEN_CIRCUIT_OHMS` is set just below that, at 7500. As soon as the last three raw readings are all at or above it, **Filtered ohms** shows `ERR`. With the cable open from power-on the buffer is empty, so the cell shows `ERR` straight away. Plug the cable back in and the first raw reading below `OPEN_CIRCUIT_OHMS` is the next sample in the average. The needle leaves the error mark on that reading when it is within `ERROR_GAP_OHMS` of the empty-to-full range.
 
-Set `DEBUG_WIRING` to `1` at the top of `src/main.cpp` to print the same values on the serial port. The file ships with it set to `0`. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, and `Lights millivolts=...` when the lights pin is enabled. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
+`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, and `Lights millivolts=...` when the lights pin is enabled. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
 
 ## Configuration
 
@@ -206,7 +206,7 @@ All of these are in [`src/main.cpp`](src/main.cpp).
 | `STABLE_LOOPS` | 4 | Loops in a row the new lights state must hold. Each loop is ~150 ms, so ~0.6 s |
 | `WITH_START_UP_ANIMATION` | 1 | Set to 0 to skip the E-to-F sweep |
 | `SENDER_AVG_SAMPLES` | 10 | Length of the trimmed-mean buffer |
-| `DEBUG_WIRING` | 0 | Set to 1 to print sender readings on the serial port |
+| `DEBUG_WIRING` | 1 | Prints sender readings on the serial port. Set to 0 to turn it off |
 | `DEBUG_BUTTON_PIN` | 14 | KEY button. Toggles the debug screen |
 | `ADC_PIN` | 1 | Sender ADC |
 | `SERIES_R` | 330 | Ohms from 3.3 V to the sender ADC |

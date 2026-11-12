@@ -6,7 +6,7 @@
 //-------------------------------------------------------------
 // This switches on/off `monitor` messages in the `Serial` port
 // set of `0` for prodution, `1` for debugging
-const int DEBUG_WIRING = 0;
+const int DEBUG_WIRING = 1;
 
 //-------------------------------------------------------------
 // KEY button toggles the debug screen. 0 is the BOOT button.
