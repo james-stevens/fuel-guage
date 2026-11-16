@@ -177,9 +177,13 @@ Filtered ohms    Lights mV
 
 `ERR` means the filtered reading is more than `ERROR_GAP_OHMS` (10) outside the empty-to-full range. On this car empty is the higher resistance, so that limit is above `EMPTY_OHMS + ERROR_GAP_OHMS` (167 + 10 = 177 Ω). The low end is the same gap past the smaller of `EMPTY_OHMS` and `FULL_OHMS` (below 19 Ω with these numbers).
 
-A broken wire, or the sender unplugged, is an open circuit. The ADC tops out near 3.162 V, about 7561 Ω, and **Sender ohms** still shows that raw reading. The rail guard above does not change that normal open-circuit reading. Those readings are left out of the average. `OPEN_CIRCUIT_OHMS` is set just below that, at 7500. As soon as the last three raw readings are all at or above it, **Filtered ohms** shows `ERR`. With the cable open from power-on the buffer is empty, so the cell shows `ERR` straight away. Plug the cable back in and the first raw reading below `OPEN_CIRCUIT_OHMS` is the next sample in the average. The needle leaves the error mark on that reading when it is within `ERROR_GAP_OHMS` of the empty-to-full range.
+A broken wire, or the sender unplugged while the 330 Ω resistor is still in circuit, is an open circuit. The ADC tops out near 3.162 V, about 7561 Ω, and **Sender ohms** still shows that raw reading. The rail guard above does not change that normal open-circuit reading. Those readings are left out of the average. `OPEN_CIRCUIT_OHMS` is set just below that, at 7500. As soon as the last three raw readings are all at or above it, **Filtered ohms** shows `ERR`. With the cable open from power-on the buffer is empty, so the cell shows `ERR` straight away. Plug the cable back in and the first raw reading below `OPEN_CIRCUIT_OHMS` is the next sample in the average. The needle leaves the error mark on that reading when it is within `ERROR_GAP_OHMS` of the empty-to-full range.
 
-`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, and `Lights millivolts=...` when the lights pin is enabled. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
+The whole harness unplugged is a different fault. The 330 Ω pull-up is in the harness, not on the board, so GPIO1 floats and sits around 0.2–0.4 V. That looks like a low resistance, near full, not `ERR`. About once a second (`PROBE_MS`) the firmware enables the chip’s internal pull-up, waits 300 µs (`PROBE_SETTLE_US`), and takes one reading. That sample is not put in the average, and the pull-up is turned off again before the next filtered sample. If the probe is within 50 mV of 3.3 V, the same window as the ohms rail guard, it counts as a failure. Three failures in a row (`PROBE_FAILS`) take the same `ERR` path as a cable break: needle under E, warning lamp on. One passing probe clears the count and clears that `ERR`.
+
+This board’s calibrated ADC has been seen to stop near 3.16 V even when the pin is at the supply. A floating pin pulled up internally can land on that same ceiling, short of the 3.25 V fail line, and then the probe will not declare `ERR`. The serial `Probe mV` figure is how to see that.
+
+`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, `Lights millivolts=...` when the lights pin is enabled, then `Probe mV=... fails=...`. The four on-screen cells are unchanged; there is no spare cell for the probe. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
 
 ## Configuration
 
@@ -191,6 +195,9 @@ All of these are in [`src/main.cpp`](src/main.cpp).
 | `FULL_OHMS` | 29 | Sender resistance at full. Set this for your tank |
 | `ERROR_GAP_OHMS` | 10 | How far past empty or full still counts as that stop |
 | `OPEN_CIRCUIT_OHMS` | 7500 | Raw reading at or above this is left out of the average. Three in a row is a cable break |
+| `PROBE_MS` | 1000 | How often the floating-pin pull-up probe runs |
+| `PROBE_SETTLE_US` | 300 | How long the internal pull-up is left on before the probe sample |
+| `PROBE_FAILS` | 3 | Rail probes in a row before the same `ERR` as a cable break |
 | `FAKE_CAR_READING` | 0 | Set above 0.01 to ignore the sender and force this resistance |
 | `EMPTY_ANGLE` | 315 | Needle angle at empty. Tied to the gauge face |
 | `FULL_ANGLE` | 402 | Needle angle at full. Tied to the gauge face |

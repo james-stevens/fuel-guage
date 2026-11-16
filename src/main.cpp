@@ -1,6 +1,7 @@
 #define LGFX_USE_V1
 #include <esp_wifi.h>
 #include <esp_bt.h>
+#include <driver/gpio.h>
 #include <LovyanGFX.hpp>
 
 //-------------------------------------------------------------
@@ -152,6 +153,15 @@ const int   ADC_PIN = 1;
 const float SERIES_R = 330.0f;
 const float VCC = 3.3f;
 
+// The 330 Ω pull-up is in the harness. A bare GPIO1 floats around
+// 0.2-0.4 V and looks near-full. About once a second the pad pull-up
+// is switched on. Within 50 mV of 3.3 V (same window as the rail guard
+// below) is a failed probe. Three in a row is ERR. One pass clears it.
+// 300 µs is many time constants of the ~45 kΩ pull-up and the pad.
+const unsigned long PROBE_MS = 1000;
+const int PROBE_SETTLE_US = 300;
+const int PROBE_FAILS = 3;
+
 // One sample per loop. readFuelOhms() fills the sender fields.
 struct Readings {
 	float senderVolts;
@@ -159,9 +169,12 @@ struct Readings {
 	float avgOhms;
 	int lightsMv;
 	int angle;
+	int probeMv;
+	int probeFails;
 };
 
 Readings readings;
+bool probeErr = false;
 int lastAngle = -999;
 bool lowFuel = false;
 bool lightsOn = false;
@@ -176,6 +189,14 @@ char debugShown[4][24];
 
 
 
+bool voltsOnRail(float volts)
+{
+	// Within 50 mV of 3.3 V. Shared by the ohms guard and the float probe.
+	return volts >= (VCC - 0.05f);
+}
+
+
+
 float readFuelOhms()
 {
 	// Factory calibration. raw/4095*VCC reads about 80 mV low.
@@ -185,12 +206,56 @@ float readFuelOhms()
 		return 0;
 		}
 	// On the top rail the divider is ~0 and ohms goes negative or infinite.
-	if (readings.senderVolts >= VCC - 0.05f) {
+	if (voltsOnRail(readings.senderVolts)) {
 		readings.senderOhms = 1.0e6f;
 		return readings.senderOhms;
 		}
 	readings.senderOhms = SERIES_R * (readings.senderVolts / (VCC - readings.senderVolts));
 	return readings.senderOhms;
+}
+
+
+
+void probeSenderPin()
+{
+static unsigned long lastMs = 0;
+unsigned long now;
+int mv;
+
+	now = millis();
+	if ((now - lastMs) < PROBE_MS) return;
+	lastMs = now;
+
+	// platformio.ini does not pin a core. This project resolves
+	// espressif32 8.0.0: Arduino-ESP32 3.3.12 on IDF 5.5.5.
+	// In that core analogReadMilliVolts() calls __analogInit() only
+	// while the pin is not already on the ADC oneshot bus. That init,
+	// like pinMode(pin, ANALOG), applies gpio_config() with both pulls
+	// off. pinMode(INPUT_PULLUP) would also drop the ADC bus through
+	// periman, so the next analogReadMilliVolts() would attach the pin
+	// again and clear the pull before the sample.
+	// The throwaway read attaches the channel first. gpio_set_pull_mode()
+	// (gpio_pullup_en underneath) then sets the pad pull without going
+	// through pinMode. On ESP32-S3 that writes the IO_MUX pull, because
+	// SOC_GPIO_SUPPORT_RTC_INDEPENDENT is set, and that is the pad the
+	// ADC samples. The real sample does not re-enter __analogInit(), so
+	// the pull stays on for it. The pull is turned off before the
+	// filtered reading, and this sample is not stored in the average.
+	(void)analogReadMilliVolts(ADC_PIN);
+	gpio_set_pull_mode((gpio_num_t)ADC_PIN, GPIO_PULLUP_ONLY);
+	delayMicroseconds(PROBE_SETTLE_US);
+	mv = (int)analogReadMilliVolts(ADC_PIN);
+	gpio_set_pull_mode((gpio_num_t)ADC_PIN, GPIO_FLOATING);
+
+	readings.probeMv = mv;
+	if (voltsOnRail(mv / 1000.0f)) {
+		if (readings.probeFails < PROBE_FAILS) readings.probeFails++;
+		if (readings.probeFails >= PROBE_FAILS) probeErr = true;
+		}
+	else {
+		readings.probeFails = 0;
+		probeErr = false;
+		}
 }
 
 
@@ -201,7 +266,11 @@ static float buf[SENDER_AVG_SAMPLES];
 static int idx = 0;
 static bool filled = false;
 static int openStreak = 0;
-float raw = readFuelOhms();
+float raw;
+
+	// Once a second. The probe sample stays out of buf[].
+	probeSenderPin();
+	raw = readFuelOhms();
 
 	// Open-circuit samples stay out of the average. The first good
 	// reading is filtered with whatever was stored before the break.
@@ -238,8 +307,9 @@ float raw = readFuelOhms();
 		}
 
 	// Empty buffer (cable open from power-on), three raw readings on
-	// the ADC rail, or a filtered value outside the sender range.
-	if ((n == 0)||(openStreak >= 3)||(ohms < MIN_OHMS)||(ohms > MAX_OHMS)) {
+	// the ADC rail, three failed pull-up probes, or a filtered value
+	// outside the sender range.
+	if (probeErr||(n == 0)||(openStreak >= 3)||(ohms < MIN_OHMS)||(ohms > MAX_OHMS)) {
 		readings.avgOhms = ERROR_OHMS;
 		return ERROR_OHMS;
 		}
@@ -517,13 +587,13 @@ char buf[24];
 void debug_wiring()
 {
 static int id=0;
-char line[128];
+char line[192];
 int len;
 
 	if (LIGHTS_GPIO_PIN) {
-		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Lights millivolts=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.lightsMv);
+		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Lights millivolts=%d,  Probe mV=%d fails=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.lightsMv, readings.probeMv, readings.probeFails);
 	} else {
-		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms);
+		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Probe mV=%d fails=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.probeMv, readings.probeFails);
 	}
 	if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
 		Serial.write((const uint8_t *)line, (size_t)len);
