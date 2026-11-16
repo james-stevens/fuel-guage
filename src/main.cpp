@@ -378,9 +378,10 @@ int finalAngle;
 		}
 	delay(10);   // brief pause at Full
 
-	// Failed probes: skip the sender reading and park on the error mark.
-	// Day brightness is the ERR rule in loop(); set it here too so the
-	// first frame is not the dim level a floating lights pin would pick.
+	// Failed probes: same F-to-level return, but the target is the error
+	// mark rather than the floating reading. Day brightness is the ERR
+	// rule in loop(); set it here too so the return is not the dim level
+	// a floating lights pin would pick. The lamp stays off until the end.
 	if (readings.probeFails >= PROBE_FAILS) {
 		probeErr = true;
 		readings.avgOhms = ERROR_OHMS;
@@ -388,12 +389,9 @@ int finalAngle;
 		targetBrightness = BRIGHTNESS_LIGHTS_OFF;
 		fadeTo = BRIGHTNESS_LIGHTS_OFF;
 		tft.setBrightness(brightness);
-		updateLowFuel(ERROR_ANGLE);
-		drawNeedle(ERROR_ANGLE);
-		return;
+		finalAngle = ERROR_ANGLE;
 		}
-
-	finalAngle = ohmsToAngle(filteredOhms());
+	else finalAngle = ohmsToAngle(filteredOhms());
 
 	// Sweep from F to actual level, unless the level is "F"
 	if (finalAngle != FULL_ANGLE) {
