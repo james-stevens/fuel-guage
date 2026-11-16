@@ -1,6 +1,7 @@
 #define LGFX_USE_V1
 #include <esp_wifi.h>
 #include <esp_bt.h>
+#include <driver/gpio.h>
 #include <LovyanGFX.hpp>
 
 //-------------------------------------------------------------
@@ -152,6 +153,19 @@ const int   ADC_PIN = 1;
 const float SERIES_R = 330.0f;
 const float VCC = 3.3f;
 
+// The 330 Ω pull-up is in the harness. A bare GPIO1 floats around
+// 0.2-0.4 V and looks near-full. About once a second the pad pull-up
+// is switched on. The calibrated ADC tops out near 3.16 V, so the rail
+// guard (within 50 mV of 3.3 V) never sees that float. A connected
+// sender is at most about 1.2 V at empty (167 Ω with the 330 Ω divider),
+// and the 45 kΩ pull-up in parallel lifts it by under 1%. 2500 mV sits
+// in the gap. Above PROBE_FAIL_MV is a failed probe. Three in a row is
+// ERR. One pass clears it. 300 µs is many time constants of that pull-up.
+const unsigned long PROBE_MS = 1000;
+const int PROBE_SETTLE_US = 300;
+const int PROBE_FAIL_MV = 2500;
+const int PROBE_FAILS = 3;
+
 // One sample per loop. readFuelOhms() fills the sender fields.
 struct Readings {
 	float senderVolts;
@@ -159,9 +173,13 @@ struct Readings {
 	float avgOhms;
 	int lightsMv;
 	int angle;
+	int probeMv;
+	int probeFails;
 };
 
 Readings readings;
+bool probeErr = false;
+unsigned long probeLastMs = 0;
 int lastAngle = -999;
 bool lowFuel = false;
 bool lightsOn = false;
@@ -176,6 +194,14 @@ char debugShown[4][24];
 
 
 
+bool voltsOnRail(float volts)
+{
+	// Within 50 mV of 3.3 V. The ohms guard only; the probe uses PROBE_FAIL_MV.
+	return volts >= (VCC - 0.05f);
+}
+
+
+
 float readFuelOhms()
 {
 	// Factory calibration. raw/4095*VCC reads about 80 mV low.
@@ -185,12 +211,63 @@ float readFuelOhms()
 		return 0;
 		}
 	// On the top rail the divider is ~0 and ohms goes negative or infinite.
-	if (readings.senderVolts >= VCC - 0.05f) {
+	if (voltsOnRail(readings.senderVolts)) {
 		readings.senderOhms = 1.0e6f;
 		return readings.senderOhms;
 		}
 	readings.senderOhms = SERIES_R * (readings.senderVolts / (VCC - readings.senderVolts));
 	return readings.senderOhms;
+}
+
+
+
+void runProbe()
+{
+int mv;
+
+	probeLastMs = millis();
+
+	// platformio.ini does not pin a core. This project resolves
+	// espressif32 8.0.0: Arduino-ESP32 3.3.12 on IDF 5.5.5.
+	// In that core analogReadMilliVolts() calls __analogInit() only
+	// while the pin is not already on the ADC oneshot bus. That init,
+	// like pinMode(pin, ANALOG), applies gpio_config() with both pulls
+	// off. pinMode(INPUT_PULLUP) would also drop the ADC bus through
+	// periman, so the next analogReadMilliVolts() would attach the pin
+	// again and clear the pull before the sample.
+	// The throwaway read attaches the channel first. gpio_set_pull_mode()
+	// (gpio_pullup_en underneath) then sets the pad pull without going
+	// through pinMode. On ESP32-S3 that writes the IO_MUX pull, because
+	// SOC_GPIO_SUPPORT_RTC_INDEPENDENT is set, and that is the pad the
+	// ADC samples. The real sample does not re-enter __analogInit(), so
+	// the pull stays on for it. The pull is turned off before the
+	// filtered reading, and this sample is not stored in the average.
+	(void)analogReadMilliVolts(ADC_PIN);
+	gpio_set_pull_mode((gpio_num_t)ADC_PIN, GPIO_PULLUP_ONLY);
+	delayMicroseconds(PROBE_SETTLE_US);
+	mv = (int)analogReadMilliVolts(ADC_PIN);
+	gpio_set_pull_mode((gpio_num_t)ADC_PIN, GPIO_FLOATING);
+
+	readings.probeMv = mv;
+	if (mv > PROBE_FAIL_MV) {
+		if (readings.probeFails < PROBE_FAILS) readings.probeFails++;
+		if (readings.probeFails >= PROBE_FAILS) probeErr = true;
+		}
+	else {
+		readings.probeFails = 0;
+		probeErr = false;
+		}
+}
+
+
+
+void probeSenderPin()
+{
+unsigned long now;
+
+	now = millis();
+	if ((now - probeLastMs) < PROBE_MS) return;
+	runProbe();
 }
 
 
@@ -201,7 +278,11 @@ static float buf[SENDER_AVG_SAMPLES];
 static int idx = 0;
 static bool filled = false;
 static int openStreak = 0;
-float raw = readFuelOhms();
+float raw;
+
+	// Once a second. The probe sample stays out of buf[].
+	probeSenderPin();
+	raw = readFuelOhms();
 
 	// Open-circuit samples stay out of the average. The first good
 	// reading is filtered with whatever was stored before the break.
@@ -238,8 +319,9 @@ float raw = readFuelOhms();
 		}
 
 	// Empty buffer (cable open from power-on), three raw readings on
-	// the ADC rail, or a filtered value outside the sender range.
-	if ((n == 0)||(openStreak >= 3)||(ohms < MIN_OHMS)||(ohms > MAX_OHMS)) {
+	// the ADC rail, three failed pull-up probes, or a filtered value
+	// outside the sender range.
+	if (probeErr||(n == 0)||(openStreak >= 3)||(ohms < MIN_OHMS)||(ohms > MAX_OHMS)) {
 		readings.avgOhms = ERROR_OHMS;
 		return ERROR_OHMS;
 		}
@@ -278,16 +360,38 @@ void drawNeedle(int angle)
 
 void startupSweep() 
 {
+int total = 0;
+int frame = 0;
+int finalAngle;
+
 	// Warning lamp stays off for the whole sweep, including the bounce.
+	// Three probes, at the start, middle and end, so a bare pin is
+	// already failed when the sweep finishes.
+	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) total++;
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) {
 		tft.pushImage(0, 0, 320, 170, light_off_small);
 		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
 		delay(8);
 		if (a&0x1) filteredOhms();
+		if (frame == 0 || frame == total/2 || frame == total - 1) runProbe();
+		frame++;
 		}
 	delay(10);   // brief pause at Full
 
-	int finalAngle = ohmsToAngle(filteredOhms());
+	// Failed probes: same F-to-level return, but the target is the error
+	// mark rather than the floating reading. Day brightness is the ERR
+	// rule in loop(); set it here too so the return is not the dim level
+	// a floating lights pin would pick. The lamp stays off until the end.
+	if (readings.probeFails >= PROBE_FAILS) {
+		probeErr = true;
+		readings.avgOhms = ERROR_OHMS;
+		brightness = BRIGHTNESS_LIGHTS_OFF;
+		targetBrightness = BRIGHTNESS_LIGHTS_OFF;
+		fadeTo = BRIGHTNESS_LIGHTS_OFF;
+		tft.setBrightness(brightness);
+		finalAngle = ERROR_ANGLE;
+		}
+	else finalAngle = ohmsToAngle(filteredOhms());
 
 	// Sweep from F to actual level, unless the level is "F"
 	if (finalAngle != FULL_ANGLE) {
@@ -517,13 +621,13 @@ char buf[24];
 void debug_wiring()
 {
 static int id=0;
-char line[128];
+char line[192];
 int len;
 
 	if (LIGHTS_GPIO_PIN) {
-		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Lights millivolts=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.lightsMv);
+		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Lights millivolts=%d,  Probe mV=%d fails=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.lightsMv, readings.probeMv, readings.probeFails);
 	} else {
-		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms);
+		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Probe mV=%d fails=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.probeMv, readings.probeFails);
 	}
 	if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
 		Serial.write((const uint8_t *)line, (size_t)len);
@@ -569,6 +673,12 @@ bool down;
 
 	if (LIGHTS_GPIO_PIN) {
 		check_lights();
+		// ERR (open cable, rail-high, or a failed float probe) forces
+		// day brightness. A bare lights pin floats near 2.9 V and would
+		// dim a unit with no harness. lightsOn still tracks the pin, so
+		// leaving ERR fades back to it. The millis() fade does the move.
+		if (readings.avgOhms == ERROR_OHMS) targetBrightness = BRIGHTNESS_LIGHTS_OFF;
+		else targetBrightness = lightsOn?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF;
 		fadeBrightness();
 		}
 

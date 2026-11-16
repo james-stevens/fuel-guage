@@ -110,6 +110,8 @@ The fade does not stop the gauge. It moves from the current level to the new one
 
 At boot, after the display is initialised and before the startup sweep, the pin is read once with the same 1600 / 1200 mV test. Lights already on start at brightness 60. Lights off, a reading in the gap, or pin 0, start at 250. That first result is stored as the current lights state, so the gauge does not fade on the first loops just because it woke up.
 
+While the gauge is showing `ERR` — open cable, a sender reading on the 3.3 V rail, or a failed float probe — the backlight fades to the day level and ignores the lights pin. A bare lights pin floats near 2.9 V, which would otherwise dim a unit with no harness. The lights state keeps updating, so when the fault clears the same fade returns to the level the pin asks for.
+
 ## Calibration
 
 Every resistance below is **Filtered ohms** on the debug screen.
@@ -147,7 +149,7 @@ Within `ERROR_GAP_OHMS` (10 Ω) past empty or full, the needle stays on that sto
 
 The lamp has a gap so it does not flicker when the needle sits on the threshold. Below 335 it turns on. It stays on through 335, 336 and 337, and turns off only at 338 and above. Raise the on-angle to warn sooner. Lower it to warn later. Keep the off-angle a few degrees higher.
 
-The startup sweep keeps the normal face the whole way, including the bounce below the final angle. When the sweep finishes, the lamp is set from the real level with the usual hysteresis and the gauge is redrawn. Below 335 it comes on, including `ERROR_ANGLE`. At 338 and above it stays off. A level in the 335–337 gap leaves it off, because it starts off. With the startup animation disabled (`WITH_START_UP_ANIMATION` set to 0), the first real reading uses the same rule.
+The startup sweep keeps the normal face the whole way, including the bounce below the final angle. Three float probes are taken across that E-to-F motion. If all three fail, the needle sweeps back from F to `ERROR_ANGLE` at day brightness, the same return as a real level, and does not show the floating reading. Otherwise, when the sweep finishes, the lamp is set from the real level with the usual hysteresis and the gauge is redrawn. Below 335 it comes on, including `ERROR_ANGLE`. At 338 and above it stays off. A level in the 335–337 gap leaves it off, because it starts off. With the startup animation disabled (`WITH_START_UP_ANIMATION` set to 0), the first real reading uses the same rule.
 
 These angles match the gauge face in this repo. On a new face, put `EMPTY_ANGLE` on the E mark, `FULL_ANGLE` on the F mark, `ERROR_ANGLE` just below E, and the two lamp angles where the low-fuel warning should come on and go off.
 
@@ -177,9 +179,13 @@ Filtered ohms    Lights mV
 
 `ERR` means the filtered reading is more than `ERROR_GAP_OHMS` (10) outside the empty-to-full range. On this car empty is the higher resistance, so that limit is above `EMPTY_OHMS + ERROR_GAP_OHMS` (167 + 10 = 177 Ω). The low end is the same gap past the smaller of `EMPTY_OHMS` and `FULL_OHMS` (below 19 Ω with these numbers).
 
-A broken wire, or the sender unplugged, is an open circuit. The ADC tops out near 3.162 V, about 7561 Ω, and **Sender ohms** still shows that raw reading. The rail guard above does not change that normal open-circuit reading. Those readings are left out of the average. `OPEN_CIRCUIT_OHMS` is set just below that, at 7500. As soon as the last three raw readings are all at or above it, **Filtered ohms** shows `ERR`. With the cable open from power-on the buffer is empty, so the cell shows `ERR` straight away. Plug the cable back in and the first raw reading below `OPEN_CIRCUIT_OHMS` is the next sample in the average. The needle leaves the error mark on that reading when it is within `ERROR_GAP_OHMS` of the empty-to-full range.
+A broken wire, or the sender unplugged while the 330 Ω resistor is still in circuit, is an open circuit. The ADC tops out near 3.162 V, about 7561 Ω, and **Sender ohms** still shows that raw reading. The rail guard above does not change that normal open-circuit reading. Those readings are left out of the average. `OPEN_CIRCUIT_OHMS` is set just below that, at 7500. As soon as the last three raw readings are all at or above it, **Filtered ohms** shows `ERR`. With the cable open from power-on the buffer is empty, so the cell shows `ERR` straight away. Plug the cable back in and the first raw reading below `OPEN_CIRCUIT_OHMS` is the next sample in the average. The needle leaves the error mark on that reading when it is within `ERROR_GAP_OHMS` of the empty-to-full range.
 
-`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, and `Lights millivolts=...` when the lights pin is enabled. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
+The whole harness unplugged is a different fault. The 330 Ω pull-up is in the harness, not on the board, so GPIO1 floats and sits around 0.2–0.4 V. That looks like a low resistance, near full, not `ERR`. About once a second (`PROBE_MS`) the firmware enables the chip’s internal pull-up, waits 300 µs (`PROBE_SETTLE_US`), and takes one reading. That sample is not put in the average, and the pull-up is turned off again before the next filtered sample. A probe above `PROBE_FAIL_MV` (2500 mV) counts as a failure. Three failures in a row (`PROBE_FAILS`) take the same `ERR` path as a cable break: needle under E, warning lamp on. One passing probe clears the count and clears that `ERR`. The start-up sweep runs those three probes itself, spread from E to F, so an unplugged harness is already `ERR` when the sweep ends. After that, probes continue once a second.
+
+2500 mV is not the ohms rail guard. The calibrated ADC tops out near 3.16 V, so a pulled-up float never reaches within 50 mV of 3.3 V. A connected sender is at most about 1.2 V at empty, and the internal 45 kΩ pull-up in parallel lifts that by under 1%. 2500 mV is between those two.
+
+`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, `Lights millivolts=...` when the lights pin is enabled, then `Probe mV=... fails=...`. The four on-screen cells are unchanged; there is no spare cell for the probe. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
 
 ## Configuration
 
@@ -191,6 +197,10 @@ All of these are in [`src/main.cpp`](src/main.cpp).
 | `FULL_OHMS` | 29 | Sender resistance at full. Set this for your tank |
 | `ERROR_GAP_OHMS` | 10 | How far past empty or full still counts as that stop |
 | `OPEN_CIRCUIT_OHMS` | 7500 | Raw reading at or above this is left out of the average. Three in a row is a cable break |
+| `PROBE_MS` | 1000 | How often the floating-pin pull-up probe runs |
+| `PROBE_SETTLE_US` | 300 | How long the internal pull-up is left on before the probe sample |
+| `PROBE_FAIL_MV` | 2500 | Probe above this (millivolts) is a failure. A connected sender stays under about 1.2 V |
+| `PROBE_FAILS` | 3 | Probes above `PROBE_FAIL_MV` in a row before the same `ERR` as a cable break |
 | `FAKE_CAR_READING` | 0 | Set above 0.01 to ignore the sender and force this resistance |
 | `EMPTY_ANGLE` | 315 | Needle angle at empty. Tied to the gauge face |
 | `FULL_ANGLE` | 402 | Needle angle at full. Tied to the gauge face |
