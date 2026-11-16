@@ -643,6 +643,12 @@ bool down;
 
 	if (LIGHTS_GPIO_PIN) {
 		check_lights();
+		// ERR (open cable, rail-high, or a failed float probe) forces
+		// day brightness. A bare lights pin floats near 2.9 V and would
+		// dim a unit with no harness. lightsOn still tracks the pin, so
+		// leaving ERR fades back to it. The millis() fade does the move.
+		if (readings.avgOhms == ERROR_OHMS) targetBrightness = BRIGHTNESS_LIGHTS_OFF;
+		else targetBrightness = lightsOn?BRIGHTNESS_LIGHTS_ON:BRIGHTNESS_LIGHTS_OFF;
 		fadeBrightness();
 		}
 

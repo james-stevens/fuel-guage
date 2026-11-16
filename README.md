@@ -110,6 +110,8 @@ The fade does not stop the gauge. It moves from the current level to the new one
 
 At boot, after the display is initialised and before the startup sweep, the pin is read once with the same 1600 / 1200 mV test. Lights already on start at brightness 60. Lights off, a reading in the gap, or pin 0, start at 250. That first result is stored as the current lights state, so the gauge does not fade on the first loops just because it woke up.
 
+While the gauge is showing `ERR` — open cable, a sender reading on the 3.3 V rail, or a failed float probe — the backlight fades to the day level and ignores the lights pin. A bare lights pin floats near 2.9 V, which would otherwise dim a unit with no harness. The lights state keeps updating, so when the fault clears the same fade returns to the level the pin asks for.
+
 ## Calibration
 
 Every resistance below is **Filtered ohms** on the debug screen.
