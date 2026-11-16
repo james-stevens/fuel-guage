@@ -155,11 +155,15 @@ const float VCC = 3.3f;
 
 // The 330 Ω pull-up is in the harness. A bare GPIO1 floats around
 // 0.2-0.4 V and looks near-full. About once a second the pad pull-up
-// is switched on. Within 50 mV of 3.3 V (same window as the rail guard
-// below) is a failed probe. Three in a row is ERR. One pass clears it.
-// 300 µs is many time constants of the ~45 kΩ pull-up and the pad.
+// is switched on. The calibrated ADC tops out near 3.16 V, so the rail
+// guard (within 50 mV of 3.3 V) never sees that float. A connected
+// sender is at most about 1.2 V at empty (167 Ω with the 330 Ω divider),
+// and the 45 kΩ pull-up in parallel lifts it by under 1%. 2500 mV sits
+// in the gap. Above PROBE_FAIL_MV is a failed probe. Three in a row is
+// ERR. One pass clears it. 300 µs is many time constants of that pull-up.
 const unsigned long PROBE_MS = 1000;
 const int PROBE_SETTLE_US = 300;
+const int PROBE_FAIL_MV = 2500;
 const int PROBE_FAILS = 3;
 
 // One sample per loop. readFuelOhms() fills the sender fields.
@@ -191,7 +195,7 @@ char debugShown[4][24];
 
 bool voltsOnRail(float volts)
 {
-	// Within 50 mV of 3.3 V. Shared by the ohms guard and the float probe.
+	// Within 50 mV of 3.3 V. The ohms guard only; the probe uses PROBE_FAIL_MV.
 	return volts >= (VCC - 0.05f);
 }
 
@@ -248,7 +252,7 @@ int mv;
 	gpio_set_pull_mode((gpio_num_t)ADC_PIN, GPIO_FLOATING);
 
 	readings.probeMv = mv;
-	if (voltsOnRail(mv / 1000.0f)) {
+	if (mv > PROBE_FAIL_MV) {
 		if (readings.probeFails < PROBE_FAILS) readings.probeFails++;
 		if (readings.probeFails >= PROBE_FAILS) probeErr = true;
 		}
