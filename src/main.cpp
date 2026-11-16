@@ -179,6 +179,7 @@ struct Readings {
 
 Readings readings;
 bool probeErr = false;
+unsigned long probeLastMs = 0;
 int lastAngle = -999;
 bool lowFuel = false;
 bool lightsOn = false;
@@ -220,15 +221,11 @@ float readFuelOhms()
 
 
 
-void probeSenderPin()
+void runProbe()
 {
-static unsigned long lastMs = 0;
-unsigned long now;
 int mv;
 
-	now = millis();
-	if ((now - lastMs) < PROBE_MS) return;
-	lastMs = now;
+	probeLastMs = millis();
 
 	// platformio.ini does not pin a core. This project resolves
 	// espressif32 8.0.0: Arduino-ESP32 3.3.12 on IDF 5.5.5.
@@ -260,6 +257,17 @@ int mv;
 		readings.probeFails = 0;
 		probeErr = false;
 		}
+}
+
+
+
+void probeSenderPin()
+{
+unsigned long now;
+
+	now = millis();
+	if ((now - probeLastMs) < PROBE_MS) return;
+	runProbe();
 }
 
 
@@ -352,16 +360,40 @@ void drawNeedle(int angle)
 
 void startupSweep() 
 {
+int total = 0;
+int frame = 0;
+int finalAngle;
+
 	// Warning lamp stays off for the whole sweep, including the bounce.
+	// Three probes, at the start, middle and end, so a bare pin is
+	// already failed when the sweep finishes.
+	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) total++;
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) {
 		tft.pushImage(0, 0, 320, 170, light_off_small);
 		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
 		delay(8);
 		if (a&0x1) filteredOhms();
+		if (frame == 0 || frame == total/2 || frame == total - 1) runProbe();
+		frame++;
 		}
 	delay(10);   // brief pause at Full
 
-	int finalAngle = ohmsToAngle(filteredOhms());
+	// Failed probes: skip the sender reading and park on the error mark.
+	// Day brightness is the ERR rule in loop(); set it here too so the
+	// first frame is not the dim level a floating lights pin would pick.
+	if (readings.probeFails >= PROBE_FAILS) {
+		probeErr = true;
+		readings.avgOhms = ERROR_OHMS;
+		brightness = BRIGHTNESS_LIGHTS_OFF;
+		targetBrightness = BRIGHTNESS_LIGHTS_OFF;
+		fadeTo = BRIGHTNESS_LIGHTS_OFF;
+		tft.setBrightness(brightness);
+		updateLowFuel(ERROR_ANGLE);
+		drawNeedle(ERROR_ANGLE);
+		return;
+		}
+
+	finalAngle = ohmsToAngle(filteredOhms());
 
 	// Sweep from F to actual level, unless the level is "F"
 	if (finalAngle != FULL_ANGLE) {
