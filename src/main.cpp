@@ -16,7 +16,7 @@ const int DEBUG_BUTTON_PIN = 14;
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
 //-------------------------------------------------------------
-const float EMPTY_OHMS = 167.0f;
+const float EMPTY_OHMS = 166.0f;
 const float FULL_OHMS  = 29.0f;
 // if outside the range above, by this amount, indicate an error
 // i.e. light the warning light and put the needle below "E"
