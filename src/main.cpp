@@ -2,6 +2,7 @@
 #include <esp_wifi.h>
 #include <esp_bt.h>
 #include <driver/gpio.h>
+#include <Preferences.h>
 #include <LovyanGFX.hpp>
 
 //-------------------------------------------------------------
@@ -10,8 +11,17 @@
 const int DEBUG_WIRING = 1;
 
 //-------------------------------------------------------------
-// KEY button toggles the debug screen. 0 is the BOOT button.
+// KEY: a short press toggles the theme, or leaves the debug screen.
+// A hold opens or closes the debug screen.
+// BOOT: any press prints a serial marker.
 const int DEBUG_BUTTON_PIN = 14;
+const int BOOT_BUTTON_PIN = 0;
+// KEY held this long opens or closes the debug screen and does not change theme.
+const unsigned long KEY_LONG_MS = 1000;
+// Ignore a KEY release shorter than this. The wait below polls faster than a tap.
+const unsigned long KEY_DEBOUNCE_MS = 30;
+// How often the buttons are read while waiting out the sample period.
+const unsigned long BUTTON_POLL_MS = 10;
 
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
@@ -56,17 +66,28 @@ const int FADE_MS = 1000;
 // Lights ON above LIGHTS_ON_MV, OFF below LIGHTS_OFF_MV, else hold.
 const int LIGHTS_ON_MV  = 1600;
 const int LIGHTS_OFF_MV = 1200;
-// check_lights() runs every loop (~150 ms). The new state must be
-// seen this many times in a row (~0.6 s) before the brightness changes.
+// check_lights() runs every loop. The new state must be seen this
+// many times in a row (~1 s) before the brightness changes.
 const int STABLE_LOOPS = 4;
 
+// Main sample period. The fade and the EMA use real elapsed time.
+const int LOOP_MS = 250;
 
 // set this to zero to disable the start-up animation
 const int WITH_START_UP_ANIMATION = 1;
 
-// readings kept from the sender. The filtered value drops the highest
-// and the lowest, then averages the rest (8 once the buffer is full).
-const int   SENDER_AVG_SAMPLES = 10;
+// Trimmed mean: drop TRIM_SAMPLES off each end, average the middle
+// (16 once the buffer is full).
+const int   SENDER_AVG_SAMPLES = 20;
+const int   TRIM_SAMPLES = 2;
+
+// A hard corner can shove the float and read well below full for a
+// few seconds. Those samples stay out of the average. ERR only if
+// the raw reading stays below MIN_OHMS for this long without a break.
+const unsigned long LOW_ERR_MS = 30000;
+
+// Needle smoothing after the trimmed mean. 2 minutes.
+const unsigned long EMA_TAU_MS = 120000;
 
 
 class LGFX : public lgfx::LGFX_Device {
@@ -130,6 +151,8 @@ public:
 
 #include "light_off_small.h"
 #include "light_on_small.h"
+#include "dark_off_small.h"
+#include "dark_on_small.h"
 
 LGFX tft;
 LGFX_Sprite needle(&tft);
@@ -175,6 +198,7 @@ struct Readings {
 	int angle;
 	int probeMv;
 	int probeFails;
+	float emaOhms;
 };
 
 Readings readings;
@@ -190,6 +214,11 @@ int fadeTo = BRIGHTNESS_LIGHTS_OFF;
 unsigned long fadeStartMs = 0;
 bool debugScreen = false;
 bool debugButtonDown = false;
+bool keyHeldLong = false;
+unsigned long keyDownMs = 0;
+bool bootDown = false;
+bool needDebugFrame = false;
+bool darkTheme = false;
 char debugShown[4][24];
 
 
@@ -278,56 +307,127 @@ static float buf[SENDER_AVG_SAMPLES];
 static int idx = 0;
 static bool filled = false;
 static int openStreak = 0;
+static bool lowTiming = false;
+static unsigned long lowSince = 0;
+static float ema = 0;
+static bool emaSeeded = false;
+static unsigned long emaMs = 0;
+static bool wasErr = false;
 float raw;
+bool lowErr = false;
+int n;
+float ohms = 0;
+float level;
+bool reseed;
 
 	// Once a second. The probe sample stays out of buf[].
 	probeSenderPin();
 	raw = readFuelOhms();
 
-	// Open-circuit samples stay out of the average. The first good
-	// reading is filtered with whatever was stored before the break.
+	// Open-circuit and below-full samples stay out of the average.
+	// A valid sample is the only thing that clears the low timer.
 	if (raw >= OPEN_CIRCUIT_OHMS) {
 		if (openStreak < 3) openStreak++;
 		}
+	else if (raw < MIN_OHMS) {
+		openStreak = 0;
+		if (!lowTiming) {
+			lowTiming = true;
+			lowSince = millis();
+			}
+		if ((millis() - lowSince) >= LOW_ERR_MS) lowErr = true;
+		}
 	else {
 		openStreak = 0;
+		lowTiming = false;
 		buf[idx] = raw;
 		idx = (idx + 1) % SENDER_AVG_SAMPLES;
 		if (idx == 0) filled = true;
 		}
 
-	int n = filled ? SENDER_AVG_SAMPLES : idx;
-	float ohms = 0;
+	n = filled ? SENDER_AVG_SAMPLES : idx;
 	if (n > 0) {
+		float hi[TRIM_SAMPLES];
+		float lo[TRIM_SAMPLES];
 		float sum = 0;
-		float lo = buf[0];
-		float hi = buf[0];
-		for (int i = 0; i < n; i++) {
-			sum += buf[i];
-			if (buf[i] < lo) lo = buf[i];
-			if (buf[i] > hi) hi = buf[i];
+		int k;
+		for (k = 0; k < TRIM_SAMPLES; k++) {
+			hi[k] = -1.0e30f;
+			lo[k] = 1.0e30f;
 			}
-		// Plain mean until a high and a low can be dropped. A full
-		// buffer divides by 8.
-		if (n < 3) ohms = sum / n;
-		else ohms = (sum - hi - lo) / (n - 2);
+		for (int i = 0; i < n; i++) {
+			float v = buf[i];
+			sum += v;
+			for (k = 0; k < TRIM_SAMPLES; k++) {
+				if (v > hi[k]) {
+					for (int j = TRIM_SAMPLES - 1; j > k; j--) hi[j] = hi[j - 1];
+					hi[k] = v;
+					break;
+					}
+				}
+			for (k = 0; k < TRIM_SAMPLES; k++) {
+				if (v < lo[k]) {
+					for (int j = TRIM_SAMPLES - 1; j > k; j--) lo[j] = lo[j - 1];
+					lo[k] = v;
+					break;
+					}
+				}
+			}
+		// Plain mean until both ends can be dropped. A full buffer
+		// drops 2 + 2 and divides by 16.
+		if (n <= TRIM_SAMPLES * 2) ohms = sum / n;
+		else {
+			float dropped = 0;
+			for (k = 0; k < TRIM_SAMPLES; k++) dropped += hi[k] + lo[k];
+			ohms = (sum - dropped) / (n - TRIM_SAMPLES * 2);
+			}
 		}
 
 	if (FAKE_CAR_READING > 0.01) {
 		readings.avgOhms = FAKE_CAR_READING;
+		readings.emaOhms = FAKE_CAR_READING;
 		return FAKE_CAR_READING;
 		}
 
 	// Empty buffer (cable open from power-on), three raw readings on
-	// the ADC rail, three failed pull-up probes, or a filtered value
-	// outside the sender range.
-	if (probeErr||(n == 0)||(openStreak >= 3)||(ohms < MIN_OHMS)||(ohms > MAX_OHMS)) {
+	// the ADC rail, three failed pull-up probes, 30 s continuously
+	// below MIN_OHMS, or a filtered value above the sender range.
+	// Below-MIN samples are not an immediate fault: a corner can
+	// hold the float there for a few seconds.
+	if (probeErr||(n == 0 && !lowTiming)||(openStreak >= 3)||lowErr||(n > 0 && ohms > MAX_OHMS)) {
+		wasErr = true;
 		readings.avgOhms = ERROR_OHMS;
 		return ERROR_OHMS;
 		}
 
+	// First full trimmed mean seeds the EMA, so the sweep returns to
+	// the real level. Leaving ERR does the same, instead of crawling
+	// for EMA_TAU_MS. Otherwise alpha is elapsed / EMA_TAU_MS.
+	reseed = wasErr || (!emaSeeded && filled);
+	if (reseed) {
+		ema = ohms;
+		emaSeeded = true;
+		emaMs = millis();
+		wasErr = false;
+		level = ema;
+		}
+	else if (emaSeeded) {
+		unsigned long now = millis();
+		unsigned long dt = now - emaMs;
+		float alpha;
+		emaMs = now;
+		if (dt > 0) {
+			alpha = (float)dt / (float)EMA_TAU_MS;
+			if (alpha > 1.0f) alpha = 1.0f;
+			ema += alpha * (ohms - ema);
+			}
+		level = ema;
+		}
+	else level = ohms;
+
 	readings.avgOhms = ohms;
-	return ohms;
+	readings.emaOhms = level;
+	return level;
 }
 
 
@@ -351,9 +451,16 @@ void updateLowFuel(int angle)
 }
 
 
+const uint16_t *gaugeFace(bool lamp)
+{
+	if (darkTheme) return lamp ? dark_on_small : dark_off_small;
+	return lamp ? light_on_small : light_off_small;
+}
+
+
 void drawNeedle(int angle)
 {
-	tft.pushImage(0, 0, 320, 170, (lowFuel?light_on_small:light_off_small));
+	tft.pushImage(0, 0, 320, 170, gaugeFace(lowFuel));
 	needle.pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
 }
 
@@ -369,7 +476,7 @@ int finalAngle;
 	// already failed when the sweep finishes.
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) total++;
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) {
-		tft.pushImage(0, 0, 320, 170, light_off_small);
+		tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
 		delay(8);
 		if (a&0x1) filteredOhms();
@@ -397,14 +504,14 @@ int finalAngle;
 	if (finalAngle != FULL_ANGLE) {
 		int step = -2;
 		for (int a = FULL_ANGLE; a != finalAngle; a += step) {
-			tft.pushImage(0, 0, 320, 170, light_off_small);
+			tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 			needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
 			delay(8);
 			if ((step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle)) break;
 			}
 
 		// End a little below the final position to get a little bounce at the end
-		tft.pushImage(0, 0, 320, 170, light_off_small);
+		tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 		needle.pushRotateZoom(160, 60 + 180, finalAngle - 2, 1.0f, 1.0f, TFT_TRANSPARENT);
 		}
 
@@ -460,7 +567,10 @@ void setup()
 	pinMode(ADC_PIN, INPUT);
 	if (LIGHTS_GPIO_PIN) pinMode(LIGHTS_GPIO_PIN, INPUT);
 	pinMode(DEBUG_BUTTON_PIN, INPUT_PULLUP);
+	pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
 	debugButtonDown = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
+	keyHeldLong = debugButtonDown;
+	bootDown = (digitalRead(BOOT_BUTTON_PIN) == LOW);
 
 	tft.init();
 	tft.setRotation(3);
@@ -481,8 +591,17 @@ void setup()
 	pinMode(15, OUTPUT); // switch screen on
 	digitalWrite(15, HIGH);
 
+	// Saved theme before the sweep, so the animation uses it.
+	// Read-only: nothing is written until a long press changes it.
+	{
+		Preferences prefs;
+		prefs.begin("gauge", true);
+		darkTheme = prefs.getBool("theme", false);
+		prefs.end();
+	}
+
 	// Image was stored as 320×170. Lamp stays off until the sweep has finished.
-	tft.pushImage(0, 0, 320, 170, light_off_small);
+	tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 
 	createNeedle();
 
@@ -609,7 +728,7 @@ char buf[24];
 	snprintf(buf, sizeof(buf), "%.1f", readings.senderOhms);
 	drawDebugValue(1, buf);
 	if (readings.avgOhms == ERROR_OHMS) snprintf(buf, sizeof(buf), "ERR");
-	else snprintf(buf, sizeof(buf), "%.1f", readings.avgOhms);
+	else snprintf(buf, sizeof(buf), "%.1f", readings.emaOhms);
 	drawDebugValue(2, buf);
 	if (LIGHTS_GPIO_PIN) snprintf(buf, sizeof(buf), "%d", readings.lightsMv);
 	else snprintf(buf, sizeof(buf), "n/a");
@@ -621,13 +740,13 @@ char buf[24];
 void debug_wiring()
 {
 static int id=0;
-char line[192];
+char line[256];
 int len;
 
 	if (LIGHTS_GPIO_PIN) {
-		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Lights millivolts=%d,  Probe mV=%d fails=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.lightsMv, readings.probeMv, readings.probeFails);
+		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Lights millivolts=%d,  Probe mV=%d fails=%d,  emaOhms=%.1f\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.lightsMv, readings.probeMv, readings.probeFails, readings.emaOhms);
 	} else {
-		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Probe mV=%d fails=%d\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.probeMv, readings.probeFails);
+		len = snprintf(line, sizeof(line), "%03d: Sender calVolts=%.3f  calOhms=%.1f  filteredOhms=%.1f,  Probe mV=%d fails=%d,  emaOhms=%.1f\n", id++, readings.senderVolts, readings.senderOhms, readings.avgOhms, readings.probeMv, readings.probeFails, readings.emaOhms);
 	}
 	if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
 		Serial.write((const uint8_t *)line, (size_t)len);
@@ -636,29 +755,109 @@ int len;
 
 
 
-void loop()
+void markLine()
+{
+static int n = 0;
+char line[24];
+int len;
+
+	n++;
+	len = snprintf(line, sizeof(line), "MARK %d\n", n);
+	if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
+		Serial.write((const uint8_t *)line, (size_t)len);
+		}
+}
+
+
+void toggleTheme()
+{
+Preferences prefs;
+char line[24];
+int len;
+
+	darkTheme = !darkTheme;
+	prefs.begin("gauge", false);
+	prefs.putBool("theme", darkTheme);
+	prefs.end();
+	len = snprintf(line, sizeof(line), "THEME %s\n", darkTheme ? "dark" : "light");
+	if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
+		Serial.write((const uint8_t *)line, (size_t)len);
+		}
+	if (!debugScreen) lastAngle = -999;
+}
+
+
+void pollButtons()
 {
 bool down;
+bool boot;
+
+	// Short press is acted on at release. Crossing 1 s while still held
+	// toggles the debug screen and consumes the press, so that release
+	// does not also change the theme. On the debug screen a short press
+	// returns to the gauge and does not change the theme. Drawing waits
+	// until the next loop so this can run at 80 MHz.
+	down = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
+	if (down && !debugButtonDown) {
+		debugButtonDown = true;
+		keyDownMs = millis();
+		keyHeldLong = false;
+		}
+	else if (down && !keyHeldLong && (millis() - keyDownMs) >= KEY_LONG_MS) {
+		keyHeldLong = true;
+		debugScreen = !debugScreen;
+		if (debugScreen) needDebugFrame = true;
+		else lastAngle = -999;
+		}
+	else if (!down && debugButtonDown) {
+		unsigned long held = millis() - keyDownMs;
+		debugButtonDown = false;
+		if (!keyHeldLong && held >= KEY_DEBOUNCE_MS) {
+			if (debugScreen) {
+				debugScreen = false;
+				lastAngle = -999;
+				}
+			else toggleTheme();
+			}
+		}
+
+	// BOOT: any press prints MARK n.
+	boot = (digitalRead(BOOT_BUTTON_PIN) == LOW);
+	if (boot && !bootDown) markLine();
+	bootDown = boot;
+}
+
+
+void waitForLoop(unsigned long startMs)
+{
+	// Stay at 80 MHz. Poll often enough that a tap shorter than LOOP_MS is seen.
+	setCpuFrequencyMhz(80);
+	for (;;) {
+		pollButtons();
+		unsigned long elapsed = millis() - startMs;
+		if (elapsed >= (unsigned long)LOOP_MS) break;
+		unsigned long remain = (unsigned long)LOOP_MS - elapsed;
+		delay(remain > BUTTON_POLL_MS ? BUTTON_POLL_MS : remain);
+		}
+}
+
+
+void loop()
+{
+unsigned long startMs;
+
+	startMs = millis();
+	if (needDebugFrame) {
+		setCpuFrequencyMhz(240);
+		drawDebugFrame();
+		needDebugFrame = false;
+		}
 
 	readings.angle = ohmsToAngle(filteredOhms());
 	updateLowFuel(readings.angle);
 	if (LIGHTS_GPIO_PIN) readings.lightsMv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
 
 	if (DEBUG_WIRING) debug_wiring();
-
-	// Press edge. The 150 ms loop delay is enough debounce.
-	down = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
-	if (down && !debugButtonDown) {
-		debugScreen = !debugScreen;
-		if (debugScreen) {
-			setCpuFrequencyMhz(240);
-			drawDebugFrame();
-			}
-		else {
-			lastAngle = -999;
-			}
-		}
-	debugButtonDown = down;
 
 	if (debugScreen) {
 		setCpuFrequencyMhz(240);
@@ -682,6 +881,5 @@ bool down;
 		fadeBrightness();
 		}
 
-	setCpuFrequencyMhz(80);
-	delay(150);
+	waitForLoop(startMs);
 }
