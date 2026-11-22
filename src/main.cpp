@@ -16,8 +16,12 @@ const int DEBUG_WIRING = 1;
 // BOOT: any press prints a serial marker.
 const int DEBUG_BUTTON_PIN = 14;
 const int BOOT_BUTTON_PIN = 0;
-// KEY held this long opens the debug screen and does not change theme.
+// KEY held this long opens or closes the debug screen and does not change theme.
 const unsigned long KEY_LONG_MS = 1000;
+// Ignore a KEY release shorter than this. The wait below polls faster than a tap.
+const unsigned long KEY_DEBOUNCE_MS = 30;
+// How often the buttons are read while waiting out the sample period.
+const unsigned long BUTTON_POLL_MS = 10;
 
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
@@ -213,6 +217,7 @@ bool debugButtonDown = false;
 bool keyHeldLong = false;
 unsigned long keyDownMs = 0;
 bool bootDown = false;
+bool needDebugFrame = false;
 bool darkTheme = false;
 char debugShown[4][24];
 
@@ -782,35 +787,16 @@ int len;
 }
 
 
-void toggleDebugScreen()
-{
-	debugScreen = !debugScreen;
-	if (debugScreen) {
-		setCpuFrequencyMhz(240);
-		drawDebugFrame();
-		}
-	else {
-		lastAngle = -999;
-		}
-}
-
-
-
-void loop()
+void pollButtons()
 {
 bool down;
 bool boot;
 
-	readings.angle = ohmsToAngle(filteredOhms());
-	updateLowFuel(readings.angle);
-	if (LIGHTS_GPIO_PIN) readings.lightsMv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
-
-	if (DEBUG_WIRING) debug_wiring();
-
-	// KEY short press (on release) toggles the theme, unless the debug
-	// screen is up, in which case it returns to the gauge and does not
-	// change the theme. Crossing 1 s while still held opens or closes
-	// the debug screen and consumes the press.
+	// Short press is acted on at release. Crossing 1 s while still held
+	// toggles the debug screen and consumes the press, so that release
+	// does not also change the theme. On the debug screen a short press
+	// returns to the gauge and does not change the theme. Drawing waits
+	// until the next loop so this can run at 80 MHz.
 	down = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
 	if (down && !debugButtonDown) {
 		debugButtonDown = true;
@@ -819,21 +805,59 @@ bool boot;
 		}
 	else if (down && !keyHeldLong && (millis() - keyDownMs) >= KEY_LONG_MS) {
 		keyHeldLong = true;
-		toggleDebugScreen();
+		debugScreen = !debugScreen;
+		if (debugScreen) needDebugFrame = true;
+		else lastAngle = -999;
 		}
 	else if (!down && debugButtonDown) {
 		unsigned long held = millis() - keyDownMs;
 		debugButtonDown = false;
-		if (!keyHeldLong && held >= 50) {
-			if (debugScreen) toggleDebugScreen();
+		if (!keyHeldLong && held >= KEY_DEBOUNCE_MS) {
+			if (debugScreen) {
+				debugScreen = false;
+				lastAngle = -999;
+				}
 			else toggleTheme();
 			}
 		}
 
-	// BOOT: any press prints MARK n. No long-press action.
+	// BOOT: any press prints MARK n.
 	boot = (digitalRead(BOOT_BUTTON_PIN) == LOW);
 	if (boot && !bootDown) markLine();
 	bootDown = boot;
+}
+
+
+void waitForLoop(unsigned long startMs)
+{
+	// Stay at 80 MHz. Poll often enough that a tap shorter than LOOP_MS is seen.
+	setCpuFrequencyMhz(80);
+	for (;;) {
+		pollButtons();
+		unsigned long elapsed = millis() - startMs;
+		if (elapsed >= (unsigned long)LOOP_MS) break;
+		unsigned long remain = (unsigned long)LOOP_MS - elapsed;
+		delay(remain > BUTTON_POLL_MS ? BUTTON_POLL_MS : remain);
+		}
+}
+
+
+void loop()
+{
+unsigned long startMs;
+
+	startMs = millis();
+	if (needDebugFrame) {
+		setCpuFrequencyMhz(240);
+		drawDebugFrame();
+		needDebugFrame = false;
+		}
+
+	readings.angle = ohmsToAngle(filteredOhms());
+	updateLowFuel(readings.angle);
+	if (LIGHTS_GPIO_PIN) readings.lightsMv = analogReadMilliVolts(LIGHTS_GPIO_PIN);
+
+	if (DEBUG_WIRING) debug_wiring();
 
 	if (debugScreen) {
 		setCpuFrequencyMhz(240);
@@ -857,6 +881,5 @@ bool boot;
 		fadeBrightness();
 		}
 
-	setCpuFrequencyMhz(80);
-	delay(LOOP_MS);
+	waitForLoop(startMs);
 }
