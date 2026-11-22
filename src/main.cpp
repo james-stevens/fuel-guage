@@ -11,11 +11,12 @@
 const int DEBUG_WIRING = 1;
 
 //-------------------------------------------------------------
-// KEY button toggles the debug screen. BOOT prints a serial marker.
+// KEY: a short press toggles the theme, a hold opens the debug screen.
+// BOOT: any press prints a serial marker.
 const int DEBUG_BUTTON_PIN = 14;
 const int BOOT_BUTTON_PIN = 0;
-// Hold BOOT longer than this for the future theme switch. Not used yet.
-const unsigned long BOOT_LONG_MS = 1000;
+// KEY held this long opens the debug screen and does not change theme.
+const unsigned long KEY_LONG_MS = 1000;
 
 //-------------------------------------------------------------
 // These numbers you will prob need to change to match your car
@@ -208,6 +209,9 @@ int fadeTo = BRIGHTNESS_LIGHTS_OFF;
 unsigned long fadeStartMs = 0;
 bool debugScreen = false;
 bool debugButtonDown = false;
+bool keyHeldLong = false;
+unsigned long keyDownMs = 0;
+bool bootDown = false;
 bool darkTheme = false;
 char debugShown[4][24];
 
@@ -559,6 +563,8 @@ void setup()
 	pinMode(DEBUG_BUTTON_PIN, INPUT_PULLUP);
 	pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
 	debugButtonDown = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
+	keyHeldLong = debugButtonDown;
+	bootDown = (digitalRead(BOOT_BUTTON_PIN) == LOW);
 
 	tft.init();
 	tft.setRotation(3);
@@ -757,13 +763,42 @@ int len;
 }
 
 
+void toggleTheme()
+{
+Preferences prefs;
+char line[24];
+int len;
+
+	darkTheme = !darkTheme;
+	prefs.begin("gauge", false);
+	prefs.putBool("theme", darkTheme);
+	prefs.end();
+	len = snprintf(line, sizeof(line), "THEME %s\n", darkTheme ? "dark" : "light");
+	if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
+		Serial.write((const uint8_t *)line, (size_t)len);
+		}
+	if (!debugScreen) lastAngle = -999;
+}
+
+
+void toggleDebugScreen()
+{
+	debugScreen = !debugScreen;
+	if (debugScreen) {
+		setCpuFrequencyMhz(240);
+		drawDebugFrame();
+		}
+	else {
+		lastAngle = -999;
+		}
+}
+
+
 
 void loop()
 {
 bool down;
 bool boot;
-static bool bootDown = false;
-static unsigned long bootDownMs = 0;
 
 	readings.angle = ohmsToAngle(filteredOhms());
 	updateLowFuel(readings.angle);
@@ -771,46 +806,29 @@ static unsigned long bootDownMs = 0;
 
 	if (DEBUG_WIRING) debug_wiring();
 
-	// Press edge. The loop delay is enough debounce.
+	// KEY short press (on release) toggles the theme. Crossing 1 s
+	// while still held opens the debug screen and consumes the press,
+	// so the release does not also change the theme.
 	down = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
 	if (down && !debugButtonDown) {
-		debugScreen = !debugScreen;
-		if (debugScreen) {
-			setCpuFrequencyMhz(240);
-			drawDebugFrame();
-			}
-		else {
-			lastAngle = -999;
-			}
+		debugButtonDown = true;
+		keyDownMs = millis();
+		keyHeldLong = false;
 		}
-	debugButtonDown = down;
+	else if (down && !keyHeldLong && (millis() - keyDownMs) >= KEY_LONG_MS) {
+		keyHeldLong = true;
+		toggleDebugScreen();
+		}
+	else if (!down && debugButtonDown) {
+		unsigned long held = millis() - keyDownMs;
+		debugButtonDown = false;
+		if (!keyHeldLong && held >= 50) toggleTheme();
+		}
 
-	// BOOT: short press prints MARK n. A hold over about 1 s toggles
-	// the face. The press that prints MARK does not also change theme.
+	// BOOT: any press prints MARK n. No long-press action.
 	boot = (digitalRead(BOOT_BUTTON_PIN) == LOW);
-	if (boot && !bootDown) {
-		bootDown = true;
-		bootDownMs = millis();
-		}
-	else if (!boot && bootDown) {
-		unsigned long held = millis() - bootDownMs;
-		bootDown = false;
-		if (held >= BOOT_LONG_MS) {
-			Preferences prefs;
-			char line[24];
-			int len;
-			darkTheme = !darkTheme;
-			prefs.begin("gauge", false);
-			prefs.putBool("theme", darkTheme);
-			prefs.end();
-			len = snprintf(line, sizeof(line), "THEME %s\n", darkTheme ? "dark" : "light");
-			if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
-				Serial.write((const uint8_t *)line, (size_t)len);
-				}
-			if (!debugScreen) lastAngle = -999;
-			}
-		else if (held >= 50) markLine();
-		}
+	if (boot && !bootDown) markLine();
+	bootDown = boot;
 
 	if (debugScreen) {
 		setCpuFrequencyMhz(240);

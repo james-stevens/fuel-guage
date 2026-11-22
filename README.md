@@ -163,7 +163,7 @@ pio run -t upload
 
 ## Debug screen
 
-Press the board’s KEY button (GPIO14) to show the debug screen. Press it again to return to the gauge. With the gauge in landscape and the buttons and USB socket on the left, KEY is the bottom button.
+Hold the board’s KEY button (GPIO14) for about a second to show the debug screen. Hold it again to return to the gauge. A shorter press of KEY toggles the light and dark faces, which is remembered after power-off. With the gauge in landscape and the buttons and USB socket on the left, KEY is the bottom button. BOOT (GPIO0) prints `MARK n` on any press.
 
 The screen is a 2×2 grid. The cells refresh about every 250 ms.
 
@@ -185,7 +185,7 @@ The whole harness unplugged is a different fault. The 330 Ω pull-up is in the h
 
 2500 mV is not the ohms rail guard. The calibrated ADC tops out near 3.16 V, so a pulled-up float never reaches within 50 mV of 3.3 V. A connected sender is at most about 1.2 V at empty, and the internal 45 kΩ pull-up in parallel lifts that by under 1%. 2500 mV is between those two.
 
-`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 250 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, `Lights millivolts=...` when the lights pin is enabled, then `Probe mV=... fails=...`, then `emaOhms=...`. A short press of the BOOT button (GPIO0) prints `MARK n` on that same port. Hold it for about a second and the gauge face toggles between the light and dark themes. That choice is stored and used again after power-off. The press that prints `MARK` does not also change the theme. A `THEME light` or `THEME dark` line is printed when it changes. The four on-screen cells are unchanged; there is no spare cell for the probe. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
+`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 250 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, `Lights millivolts=...` when the lights pin is enabled, then `Probe mV=... fails=...`, then `emaOhms=...`. Any press of the BOOT button (GPIO0) prints `MARK n` on that same port. A short press of KEY toggles the light and dark themes. That choice is stored and used again after power-off. Holding KEY for about a second opens or closes the debug screen and does not also change the theme. A `THEME light` or `THEME dark` line is printed when the theme changes. The four on-screen cells are unchanged; there is no spare cell for the probe. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
 
 ## Configuration
 
@@ -220,9 +220,9 @@ All of these are in [`src/main.cpp`](src/main.cpp).
 | `TRIM_SAMPLES` | 2 | Samples dropped off each end of that buffer. A full buffer averages the middle 16 |
 | `LOW_ERR_MS` | 30000 | How long raw ohms must stay below `MIN_OHMS` before `ERR` |
 | `EMA_TAU_MS` | 120000 | Time constant of the smooth value the needle follows |
-| `BOOT_BUTTON_PIN` | 0 | Short press prints `MARK n`. A hold over about 1 s toggles light/dark and remembers it |
+| `BOOT_BUTTON_PIN` | 0 | Any press prints `MARK n` |
 | `DEBUG_WIRING` | 1 | Prints sender readings on the serial port. Set to 0 to turn it off |
-| `DEBUG_BUTTON_PIN` | 14 | KEY button. Toggles the debug screen |
+| `DEBUG_BUTTON_PIN` | 14 | KEY. Short press toggles light/dark and remembers it. A hold over about 1 s toggles the debug screen |
 | `ADC_PIN` | 1 | Sender ADC |
 | `SERIES_R` | 330 | Ohms from 3.3 V to the sender ADC |
 
