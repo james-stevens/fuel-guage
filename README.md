@@ -104,7 +104,7 @@ GPIO16 sees about 2.1 V at 12 V, about 2.6 V at 14.7 V, and 0 V with the lights 
 
 Set `LIGHTS_GPIO_PIN` to `0` if nothing is connected. An unconnected pin floats, and the screen would dim at random. This copy ships with the pin set to 16.
 
-The reading has to pass the thresholds for `STABLE_LOOPS` loops in a row (4 × 150 ms, about 0.6 s) before the target brightness changes. Above 1600 mV counts as lights on. Below 1200 mV counts as lights off. A reading in between keeps the previous state, so a small change does not flicker the backlight.
+The reading has to pass the thresholds for `STABLE_LOOPS` loops in a row (4 × 250 ms, about 1 s) before the target brightness changes. Above 1600 mV counts as lights on. Below 1200 mV counts as lights off. A reading in between keeps the previous state, so a small change does not flicker the backlight.
 
 The fade does not stop the gauge. It moves from the current level to the new one over `FADE_MS`, timed with `millis()`, so a slower loop takes bigger steps and the fade still lasts about a second. A change of mind mid-fade starts again from the level already reached. Sampling, the needle, the cable-break check, and the debug screen keep running.
 
@@ -114,7 +114,7 @@ While the gauge is showing `ERR` — open cable, a sender reading on the 3.3 V r
 
 ## Calibration
 
-Every resistance below is **Filtered ohms** on the debug screen.
+Every resistance below is **Filtered ohms** on the debug screen, which is the smoothed level. Leave the tank still until it stops moving before you copy it. The serial log’s `filteredOhms` is the trimmed mean before that smooth.
 
 Calibrate from the supply the gauge will use in the car. A laptop USB port and a car USB adapter do not always agree. Use the wiring you will actually install, and copy the on-screen Filtered ohms into the code. A multimeter across the sender is only a rough check.
 
@@ -145,7 +145,7 @@ The sender is assumed to be roughly linear between empty and full. Needle angle 
 
 `ERROR_ANGLE` is below `EMPTY_ANGLE`, so a fault parks the needle under E. 305 is also below `TANK_LOW_ON_ANGLE`, so the lamp is on for a fault.
 
-Within `ERROR_GAP_OHMS` (10 Ω) past empty or full, the needle stays on that stop. Past the gap it moves to `ERROR_ANGLE` and the screen shows `ERR`. A cable break does the same once three raw readings are at or above `OPEN_CIRCUIT_OHMS` (7500 Ω). Those readings are not averaged, so the next reading below that can leave the error mark at once.
+Within `ERROR_GAP_OHMS` (10 Ω) past empty or full, the needle stays on that stop. Past the gap on the high side it moves to `ERROR_ANGLE` and the screen shows `ERR`. A raw reading below `MIN_OHMS` (full minus that gap, 19 Ω here) is left out of the average, the same way an open-circuit sample is. It is a fault only if it stays there for `LOW_ERR_MS` (30 s) without a valid sample; a corner that shoves the float for a few seconds does not. A cable break does the same as before once three raw readings are at or above `OPEN_CIRCUIT_OHMS` (7500 Ω). Those readings are not averaged, so the next reading below that can leave the error mark at once.
 
 The lamp has a gap so it does not flicker when the needle sits on the threshold. Below 335 it turns on. It stays on through 335, 336 and 337, and turns off only at 338 and above. Raise the on-angle to warn sooner. Lower it to warn later. Keep the off-angle a few degrees higher.
 
@@ -163,9 +163,9 @@ pio run -t upload
 
 ## Debug screen
 
-Press the board’s KEY button (GPIO14) to show the debug screen. Press it again to return to the gauge. With the gauge in landscape and the buttons and USB socket on the left, KEY is the bottom button.
+Hold the board’s KEY button (GPIO14) for about a second to show the debug screen. Hold it again, or give it a shorter press, to return to the gauge. A shorter press while the gauge is showing toggles the light and dark faces, which is remembered after power-off. That short press does not change the theme when it is used to leave the debug screen. With the gauge in landscape and the buttons and USB socket on the left, KEY is the bottom button. BOOT (GPIO0) prints `MARK n` on any press.
 
-The screen is a 2×2 grid. The cells refresh about every 150 ms.
+The screen is a 2×2 grid. The cells refresh about every 250 ms.
 
 ```
 Sender volts     Sender ohms
@@ -174,7 +174,7 @@ Filtered ohms    Lights mV
 
 - **Sender volts** (top left) is the voltage on GPIO1, the ADC on the sender side of the 330 Ω resistor. One sample, shown to three decimal places.
 - **Sender ohms** (top right) is that sample converted with `330 * V / (3.3 - V)`, to one decimal place. A single sample, so it jitters. A reading under 0.01 V is reported as 0 Ω. A reading within 50 mV of 3.3 V is reported as 1000000 Ω, so a sample sitting on the supply rail cannot divide by zero or come out negative.
-- **Filtered ohms** (bottom left) is a trimmed mean of up to 10 samples (`SENDER_AVG_SAMPLES`). The highest and the lowest sample are dropped and the rest are averaged (8 samples once the buffer is full), so one spiked reading does not pull the needle. Readings at or above `OPEN_CIRCUIT_OHMS` are not stored. Until there are three stored samples it is a plain average. The needle follows this number, shown to one decimal place. Out of range, or before any sample has been stored, the cell shows `ERR`.
+- **Filtered ohms** (bottom left) shows the smoothed level the needle is using (`emaOhms`), to one decimal place. The trimmed mean that feeds it — 20 samples (`SENDER_AVG_SAMPLES`), dropping the 2 highest and 2 lowest (`TRIM_SAMPLES`), so 16 once the buffer is full — is `filteredOhms` on the serial log. Readings at or above `OPEN_CIRCUIT_OHMS`, and raw readings below `MIN_OHMS`, are not stored. The cell shows `ERR` when the gauge is in `ERR`.
 - **Lights mV** (bottom right) is the lights-input voltage in millivolts, from `LIGHTS_GPIO_PIN` (16 in this file). When `LIGHTS_GPIO_PIN` is 0 the cell shows `n/a`.
 
 `ERR` means the filtered reading is more than `ERROR_GAP_OHMS` (10) outside the empty-to-full range. On this car empty is the higher resistance, so that limit is above `EMPTY_OHMS + ERROR_GAP_OHMS` (167 + 10 = 177 Ω). The low end is the same gap past the smaller of `EMPTY_OHMS` and `FULL_OHMS` (below 19 Ω with these numbers).
@@ -185,7 +185,7 @@ The whole harness unplugged is a different fault. The 330 Ω pull-up is in the h
 
 2500 mV is not the ohms rail guard. The calibrated ADC tops out near 3.16 V, so a pulled-up float never reaches within 50 mV of 3.3 V. A connected sender is at most about 1.2 V at empty, and the internal 45 kΩ pull-up in parallel lifts that by under 1%. 2500 mV is between those two.
 
-`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 150 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, `Lights millivolts=...` when the lights pin is enabled, then `Probe mV=... fails=...`. The four on-screen cells are unchanged; there is no spare cell for the probe. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
+`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 250 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, `Lights millivolts=...` when the lights pin is enabled, then `Probe mV=... fails=...`, then `emaOhms=...`. Any press of the BOOT button (GPIO0) prints `MARK n` on that same port. A short press of KEY, while the gauge is showing, toggles the light and dark themes. That choice is stored and used again after power-off. A short press while the debug screen is up returns to the gauge and does not change the theme. Holding KEY for about a second opens or closes the debug screen and does not also change the theme. A `THEME light` or `THEME dark` line is printed when the theme changes. The four on-screen cells are unchanged; there is no spare cell for the probe. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
 
 ## Configuration
 
@@ -213,11 +213,16 @@ All of these are in [`src/main.cpp`](src/main.cpp).
 | `FADE_MS` | 1000 | Length of a full brightness fade, timed with `millis()` inside `loop()`. Not a blocking delay |
 | `LIGHTS_ON_MV` | 1600 | Lights count as on above this (millivolts) |
 | `LIGHTS_OFF_MV` | 1200 | Lights count as off below this (millivolts) |
-| `STABLE_LOOPS` | 4 | Loops in a row the new lights state must hold. Each loop is ~150 ms, so ~0.6 s |
+| `STABLE_LOOPS` | 4 | Loops in a row the new lights state must hold. Each loop is 250 ms, so ~1 s |
+| `LOOP_MS` | 250 | Main sample period |
 | `WITH_START_UP_ANIMATION` | 1 | Set to 0 to skip the E-to-F sweep |
-| `SENDER_AVG_SAMPLES` | 10 | Length of the trimmed-mean buffer |
+| `SENDER_AVG_SAMPLES` | 20 | Length of the trimmed-mean buffer |
+| `TRIM_SAMPLES` | 2 | Samples dropped off each end of that buffer. A full buffer averages the middle 16 |
+| `LOW_ERR_MS` | 30000 | How long raw ohms must stay below `MIN_OHMS` before `ERR` |
+| `EMA_TAU_MS` | 120000 | Time constant of the smooth value the needle follows |
+| `BOOT_BUTTON_PIN` | 0 | Any press prints `MARK n` |
 | `DEBUG_WIRING` | 1 | Prints sender readings on the serial port. Set to 0 to turn it off |
-| `DEBUG_BUTTON_PIN` | 14 | KEY button. Toggles the debug screen |
+| `DEBUG_BUTTON_PIN` | 14 | KEY. On the gauge, a short press toggles light/dark and remembers it. On the debug screen, a short press returns to the gauge. A hold over about 1 s toggles the debug screen |
 | `ADC_PIN` | 1 | Sender ADC |
 | `SERIES_R` | 330 | Ohms from 3.3 V to the sender ADC |
 
