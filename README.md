@@ -163,7 +163,7 @@ pio run -t upload
 
 ## Debug screen
 
-Hold the board’s KEY button (GPIO14) for about a second to show the debug screen. Hold it again to return to the gauge. A shorter press of KEY toggles the light and dark faces, which is remembered after power-off. With the gauge in landscape and the buttons and USB socket on the left, KEY is the bottom button. BOOT (GPIO0) prints `MARK n` on any press.
+Hold the board’s KEY button (GPIO14) for about a second to show the debug screen. Hold it again, or give it a shorter press, to return to the gauge. A shorter press while the gauge is showing toggles the light and dark faces, which is remembered after power-off. That short press does not change the theme when it is used to leave the debug screen. With the gauge in landscape and the buttons and USB socket on the left, KEY is the bottom button. BOOT (GPIO0) prints `MARK n` on any press.
 
 The screen is a 2×2 grid. The cells refresh about every 250 ms.
 
@@ -185,7 +185,7 @@ The whole harness unplugged is a different fault. The 330 Ω pull-up is in the h
 
 2500 mV is not the ohms rail guard. The calibrated ADC tops out near 3.16 V, so a pulled-up float never reaches within 50 mV of 3.3 V. A connected sender is at most about 1.2 V at empty, and the internal 45 kΩ pull-up in parallel lifts that by under 1%. 2500 mV is between those two.
 
-`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 250 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, `Lights millivolts=...` when the lights pin is enabled, then `Probe mV=... fails=...`, then `emaOhms=...`. Any press of the BOOT button (GPIO0) prints `MARK n` on that same port. A short press of KEY toggles the light and dark themes. That choice is stored and used again after power-off. Holding KEY for about a second opens or closes the debug screen and does not also change the theme. A `THEME light` or `THEME dark` line is printed when the theme changes. The four on-screen cells are unchanged; there is no spare cell for the probe. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
+`DEBUG_WIRING` is `1` at the top of `src/main.cpp`, so the same values are printed on the serial port. Set it to `0` to turn that log off. About every 250 ms the port writes a line like `Sender calVolts=...  calOhms=...  filteredOhms=...`, `Lights millivolts=...` when the lights pin is enabled, then `Probe mV=... fails=...`, then `emaOhms=...`. Any press of the BOOT button (GPIO0) prints `MARK n` on that same port. A short press of KEY, while the gauge is showing, toggles the light and dark themes. That choice is stored and used again after power-off. A short press while the debug screen is up returns to the gauge and does not change the theme. Holding KEY for about a second opens or closes the debug screen and does not also change the theme. A `THEME light` or `THEME dark` line is printed when the theme changes. The four on-screen cells are unchanged; there is no spare cell for the probe. `ERR` on the screen is `filteredOhms=-1.0` in that log. The baud rate is 115200. Printing is non-blocking and drops a line if nobody is reading the port. The gauge keeps running. How to open the monitor, including the `log2file` filter and the `monitor` script, is in [Building and uploading](docs/PLATFORMIO.md#serial-monitor).
 
 ## Configuration
 
@@ -222,7 +222,7 @@ All of these are in [`src/main.cpp`](src/main.cpp).
 | `EMA_TAU_MS` | 120000 | Time constant of the smooth value the needle follows |
 | `BOOT_BUTTON_PIN` | 0 | Any press prints `MARK n` |
 | `DEBUG_WIRING` | 1 | Prints sender readings on the serial port. Set to 0 to turn it off |
-| `DEBUG_BUTTON_PIN` | 14 | KEY. Short press toggles light/dark and remembers it. A hold over about 1 s toggles the debug screen |
+| `DEBUG_BUTTON_PIN` | 14 | KEY. On the gauge, a short press toggles light/dark and remembers it. On the debug screen, a short press returns to the gauge. A hold over about 1 s toggles the debug screen |
 | `ADC_PIN` | 1 | Sender ADC |
 | `SERIES_R` | 330 | Ohms from 3.3 V to the sender ADC |
 

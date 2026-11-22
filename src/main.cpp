@@ -11,7 +11,8 @@
 const int DEBUG_WIRING = 1;
 
 //-------------------------------------------------------------
-// KEY: a short press toggles the theme, a hold opens the debug screen.
+// KEY: a short press toggles the theme, or leaves the debug screen.
+// A hold opens or closes the debug screen.
 // BOOT: any press prints a serial marker.
 const int DEBUG_BUTTON_PIN = 14;
 const int BOOT_BUTTON_PIN = 0;
@@ -806,9 +807,10 @@ bool boot;
 
 	if (DEBUG_WIRING) debug_wiring();
 
-	// KEY short press (on release) toggles the theme. Crossing 1 s
-	// while still held opens the debug screen and consumes the press,
-	// so the release does not also change the theme.
+	// KEY short press (on release) toggles the theme, unless the debug
+	// screen is up, in which case it returns to the gauge and does not
+	// change the theme. Crossing 1 s while still held opens or closes
+	// the debug screen and consumes the press.
 	down = (digitalRead(DEBUG_BUTTON_PIN) == LOW);
 	if (down && !debugButtonDown) {
 		debugButtonDown = true;
@@ -822,7 +824,10 @@ bool boot;
 	else if (!down && debugButtonDown) {
 		unsigned long held = millis() - keyDownMs;
 		debugButtonDown = false;
-		if (!keyHeldLong && held >= 50) toggleTheme();
+		if (!keyHeldLong && held >= 50) {
+			if (debugScreen) toggleDebugScreen();
+			else toggleTheme();
+			}
 		}
 
 	// BOOT: any press prints MARK n. No long-press action.
