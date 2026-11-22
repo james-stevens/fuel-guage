@@ -2,6 +2,7 @@
 #include <esp_wifi.h>
 #include <esp_bt.h>
 #include <driver/gpio.h>
+#include <Preferences.h>
 #include <LovyanGFX.hpp>
 
 //-------------------------------------------------------------
@@ -144,6 +145,8 @@ public:
 
 #include "light_off_small.h"
 #include "light_on_small.h"
+#include "dark_off_small.h"
+#include "dark_on_small.h"
 
 LGFX tft;
 LGFX_Sprite needle(&tft);
@@ -205,6 +208,7 @@ int fadeTo = BRIGHTNESS_LIGHTS_OFF;
 unsigned long fadeStartMs = 0;
 bool debugScreen = false;
 bool debugButtonDown = false;
+bool darkTheme = false;
 char debugShown[4][24];
 
 
@@ -437,9 +441,16 @@ void updateLowFuel(int angle)
 }
 
 
+const uint16_t *gaugeFace(bool lamp)
+{
+	if (darkTheme) return lamp ? dark_on_small : dark_off_small;
+	return lamp ? light_on_small : light_off_small;
+}
+
+
 void drawNeedle(int angle)
 {
-	tft.pushImage(0, 0, 320, 170, (lowFuel?light_on_small:light_off_small));
+	tft.pushImage(0, 0, 320, 170, gaugeFace(lowFuel));
 	needle.pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
 }
 
@@ -455,7 +466,7 @@ int finalAngle;
 	// already failed when the sweep finishes.
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) total++;
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) {
-		tft.pushImage(0, 0, 320, 170, light_off_small);
+		tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
 		delay(8);
 		if (a&0x1) filteredOhms();
@@ -483,14 +494,14 @@ int finalAngle;
 	if (finalAngle != FULL_ANGLE) {
 		int step = -2;
 		for (int a = FULL_ANGLE; a != finalAngle; a += step) {
-			tft.pushImage(0, 0, 320, 170, light_off_small);
+			tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 			needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
 			delay(8);
 			if ((step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle)) break;
 			}
 
 		// End a little below the final position to get a little bounce at the end
-		tft.pushImage(0, 0, 320, 170, light_off_small);
+		tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 		needle.pushRotateZoom(160, 60 + 180, finalAngle - 2, 1.0f, 1.0f, TFT_TRANSPARENT);
 		}
 
@@ -568,8 +579,17 @@ void setup()
 	pinMode(15, OUTPUT); // switch screen on
 	digitalWrite(15, HIGH);
 
+	// Saved theme before the sweep, so the animation uses it.
+	// Read-only: nothing is written until a long press changes it.
+	{
+		Preferences prefs;
+		prefs.begin("gauge", true);
+		darkTheme = prefs.getBool("theme", false);
+		prefs.end();
+	}
+
 	// Image was stored as 320×170. Lamp stays off until the sweep has finished.
-	tft.pushImage(0, 0, 320, 170, light_off_small);
+	tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 
 	createNeedle();
 
@@ -765,9 +785,8 @@ static unsigned long bootDownMs = 0;
 		}
 	debugButtonDown = down;
 
-	// BOOT: short press prints MARK n. A hold over about 1 s is
-	// reserved for display themes.
-	// TODO: long press switches display theme. Detected, not acted on.
+	// BOOT: short press prints MARK n. A hold over about 1 s toggles
+	// the face. The press that prints MARK does not also change theme.
 	boot = (digitalRead(BOOT_BUTTON_PIN) == LOW);
 	if (boot && !bootDown) {
 		bootDown = true;
@@ -777,7 +796,18 @@ static unsigned long bootDownMs = 0;
 		unsigned long held = millis() - bootDownMs;
 		bootDown = false;
 		if (held >= BOOT_LONG_MS) {
-			// TODO: display themes
+			Preferences prefs;
+			char line[24];
+			int len;
+			darkTheme = !darkTheme;
+			prefs.begin("gauge", false);
+			prefs.putBool("theme", darkTheme);
+			prefs.end();
+			len = snprintf(line, sizeof(line), "THEME %s\n", darkTheme ? "dark" : "light");
+			if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
+				Serial.write((const uint8_t *)line, (size_t)len);
+				}
+			if (!debugScreen) lastAngle = -999;
 			}
 		else if (held >= 50) markLine();
 		}
