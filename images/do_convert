@@ -1,0 +1,9 @@
+#! /bin/sh
+
+if test -z "$1" -o -z "$2" -o ! -f "$1"
+	then
+		echo "Usage: $0 <input> <output>"
+		exit 1
+	fi
+
+convert "$1" -colorspace RGB -filter Mitchell -resize 320x170! -colorspace sRGB -unsharp 0x0.6+0.8+0 "$2"
