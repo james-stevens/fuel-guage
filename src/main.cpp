@@ -11,7 +11,7 @@
 const int DEBUG_WIRING = 1;
 
 //-------------------------------------------------------------
-// KEY: a short press toggles the theme, or leaves the debug screen.
+// KEY: a short press steps to the next theme, or leaves the debug screen.
 // A hold opens or closes the debug screen.
 // BOOT: any press prints a serial marker.
 const int DEBUG_BUTTON_PIN = 14;
@@ -153,6 +153,10 @@ public:
 #include "light_on_small.h"
 #include "dark_off_small.h"
 #include "dark_on_small.h"
+#include "modern_off_small.h"
+#include "modern_on_small.h"
+#include "modern_dark_off_small.h"
+#include "modern_dark_on_small.h"
 
 LGFX tft;
 LGFX_Sprite needle(&tft);
@@ -218,7 +222,21 @@ bool keyHeldLong = false;
 unsigned long keyDownMs = 0;
 bool bootDown = false;
 bool needDebugFrame = false;
-bool darkTheme = false;
+
+// One row per face. A new theme is another line in this table.
+struct ThemeFace {
+	const char *name;
+	const uint16_t *offFace;
+	const uint16_t *onFace;
+};
+const ThemeFace themes[] = {
+	{ "vintage_light", light_off_small, light_on_small },
+	{ "vintage_dark",  dark_off_small,  dark_on_small },
+	{ "modern_light",  modern_off_small, modern_on_small },
+	{ "modern_dark",   modern_dark_off_small, modern_dark_on_small },
+};
+const int THEME_COUNT = sizeof(themes) / sizeof(themes[0]);
+int themeIndex = 0;
 char debugShown[4][24];
 
 
@@ -453,8 +471,7 @@ void updateLowFuel(int angle)
 
 const uint16_t *gaugeFace(bool lamp)
 {
-	if (darkTheme) return lamp ? dark_on_small : dark_off_small;
-	return lamp ? light_on_small : light_off_small;
+	return lamp ? themes[themeIndex].onFace : themes[themeIndex].offFace;
 }
 
 
@@ -592,12 +609,15 @@ void setup()
 	digitalWrite(15, HIGH);
 
 	// Saved theme before the sweep, so the animation uses it.
-	// Read-only: nothing is written until a long press changes it.
+	// The old build stored a bool in "theme" (0 light, 1 dark), which
+	// is the same byte as index 0 and 1. Nothing is written until it changes.
 	{
 		Preferences prefs;
+		uint8_t saved;
 		prefs.begin("gauge", true);
-		darkTheme = prefs.getBool("theme", false);
+		saved = prefs.getUChar("theme", 0);
 		prefs.end();
+		themeIndex = (saved < THEME_COUNT) ? saved : 0;
 	}
 
 	// Image was stored as 320×170. Lamp stays off until the sweep has finished.
@@ -775,11 +795,11 @@ Preferences prefs;
 char line[24];
 int len;
 
-	darkTheme = !darkTheme;
+	themeIndex = (themeIndex + 1) % THEME_COUNT;
 	prefs.begin("gauge", false);
-	prefs.putBool("theme", darkTheme);
+	prefs.putUChar("theme", (uint8_t)themeIndex);
 	prefs.end();
-	len = snprintf(line, sizeof(line), "THEME %s\n", darkTheme ? "dark" : "light");
+	len = snprintf(line, sizeof(line), "THEME %s\n", themes[themeIndex].name);
 	if (len > 0 && len < (int)sizeof(line) && Serial.availableForWrite() >= len) {
 		Serial.write((const uint8_t *)line, (size_t)len);
 		}
