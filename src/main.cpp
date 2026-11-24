@@ -159,6 +159,8 @@ public:
 #include "modern_dark_on_small.h"
 #include "night_off_small.h"
 #include "night_on_small.h"
+#include "futuristic_off_small.h"
+#include "futuristic_on_small.h"
 
 LGFX tft;
 LGFX_Sprite needle(&tft);
@@ -242,6 +244,7 @@ const ThemeFace themes[] = {
 	{ "modern_light",  modern_off_small, modern_on_small, NEEDLE_MODERN },
 	{ "modern_dark",   modern_dark_off_small, modern_dark_on_small, NEEDLE_MODERN },
 	{ "night",         night_off_small, night_on_small, NEEDLE_MODERN },
+	{ "futuristic",    futuristic_off_small, futuristic_on_small, NEEDLE_MODERN },
 };
 const int THEME_COUNT = sizeof(themes) / sizeof(themes[0]);
 int themeIndex = 0;
