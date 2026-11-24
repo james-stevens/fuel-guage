@@ -157,9 +157,15 @@ public:
 #include "modern_on_small.h"
 #include "modern_dark_off_small.h"
 #include "modern_dark_on_small.h"
+#include "night_off_small.h"
+#include "night_on_small.h"
 
 LGFX tft;
 LGFX_Sprite needle(&tft);
+LGFX_Sprite modernNeedle(&tft);
+
+const int NEEDLE_VINTAGE = 0;
+const int NEEDLE_MODERN = 1;
 
 // These numbers are tied to the background image
 const int EMPTY_ANGLE = 315;
@@ -228,12 +234,14 @@ struct ThemeFace {
 	const char *name;
 	const uint16_t *offFace;
 	const uint16_t *onFace;
+	int needleStyle;
 };
 const ThemeFace themes[] = {
-	{ "vintage_light", light_off_small, light_on_small },
-	{ "vintage_dark",  dark_off_small,  dark_on_small },
-	{ "modern_light",  modern_off_small, modern_on_small },
-	{ "modern_dark",   modern_dark_off_small, modern_dark_on_small },
+	{ "vintage_light", light_off_small, light_on_small, NEEDLE_VINTAGE },
+	{ "vintage_dark",  dark_off_small,  dark_on_small,  NEEDLE_VINTAGE },
+	{ "modern_light",  modern_off_small, modern_on_small, NEEDLE_MODERN },
+	{ "modern_dark",   modern_dark_off_small, modern_dark_on_small, NEEDLE_MODERN },
+	{ "night",         night_off_small, night_on_small, NEEDLE_MODERN },
 };
 const int THEME_COUNT = sizeof(themes) / sizeof(themes[0]);
 int themeIndex = 0;
@@ -475,10 +483,19 @@ const uint16_t *gaugeFace(bool lamp)
 }
 
 
+void pushGaugeNeedle(int angle)
+{
+LGFX_Sprite *spr;
+
+	spr = (themes[themeIndex].needleStyle == NEEDLE_MODERN) ? &modernNeedle : &needle;
+	spr->pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
+}
+
+
 void drawNeedle(int angle)
 {
 	tft.pushImage(0, 0, 320, 170, gaugeFace(lowFuel));
-	needle.pushRotateZoom(160, 60 + 180, angle, 1.0f, 1.0f, TFT_TRANSPARENT);
+	pushGaugeNeedle(angle);
 }
 
 
@@ -494,7 +511,7 @@ int finalAngle;
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) total++;
 	for (int a = EMPTY_ANGLE; a <= FULL_ANGLE; a += 2) {
 		tft.pushImage(0, 0, 320, 170, gaugeFace(false));
-		needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
+		pushGaugeNeedle(a);
 		delay(8);
 		if (a&0x1) filteredOhms();
 		if (frame == 0 || frame == total/2 || frame == total - 1) runProbe();
@@ -522,14 +539,14 @@ int finalAngle;
 		int step = -2;
 		for (int a = FULL_ANGLE; a != finalAngle; a += step) {
 			tft.pushImage(0, 0, 320, 170, gaugeFace(false));
-			needle.pushRotateZoom(160, 60 + 180, a, 1.0f, 1.0f, TFT_TRANSPARENT);
+			pushGaugeNeedle(a);
 			delay(8);
 			if ((step > 0 && a >= finalAngle) || (step < 0 && a <= finalAngle)) break;
 			}
 
 		// End a little below the final position to get a little bounce at the end
 		tft.pushImage(0, 0, 320, 170, gaugeFace(false));
-		needle.pushRotateZoom(160, 60 + 180, finalAngle - 2, 1.0f, 1.0f, TFT_TRANSPARENT);
+		pushGaugeNeedle(finalAngle - 2);
 		}
 
 	// Sweep is finished. Normal hysteresis, then redraw the real level.
@@ -567,6 +584,34 @@ void createNeedle()
 	needle.fillRect(NW/2 - 3, 43, 7, NH-52, needleColour);  // wider shaft
 
 	needle.setPivot(NW/2, NH + 40);
+}
+
+
+void createModernNeedle()
+{
+	const int NW = 22;
+	const int NH = 150;
+	// Same tip and hub as the vintage shaft, so the reach matches.
+	// Wide at the hub, a point at the tip. No arrow head and no barbs.
+	const int tipY = 13;
+	const int hubY = 141;
+	const int halfW = 4;
+	uint16_t needleColour = 0xC000;
+
+	modernNeedle.createSprite(NW, NH);
+	modernNeedle.fillSprite(TFT_TRANSPARENT);
+
+	// Drop shadow, same colour and a one-pixel offset from the vintage needle.
+	modernNeedle.fillTriangle(NW/2 + 1, tipY + 2,
+					  NW/2 - halfW + 1, hubY + 2,
+					  NW/2 + halfW + 1, hubY + 2,
+					  0x6000);
+	modernNeedle.fillTriangle(NW/2, tipY,
+					  NW/2 - halfW, hubY,
+					  NW/2 + halfW, hubY,
+					  needleColour);
+
+	modernNeedle.setPivot(NW/2, NH + 40);
 }
 
 
@@ -624,6 +669,7 @@ void setup()
 	tft.pushImage(0, 0, 320, 170, gaugeFace(false));
 
 	createNeedle();
+	createModernNeedle();
 
 	// Read the real level once
 	if (WITH_START_UP_ANIMATION) startupSweep();   // play the animation
